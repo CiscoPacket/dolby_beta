@@ -16,6 +16,7 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.FrameLayout;
 
 import com.raincat.dolby_beta.helper.ClassHelper;
 import com.raincat.dolby_beta.helper.ExtraHelper;
