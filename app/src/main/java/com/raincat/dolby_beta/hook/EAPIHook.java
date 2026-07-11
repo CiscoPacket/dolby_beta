@@ -18,17 +18,26 @@ import de.robv.android.xposed.XposedBridge;
 
 /**
  * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/04/16
- *     desc   : 网络访问hook
- *     version: 1.0
+ * author : RainCat
+ * e-mail : nining377@gmail.com
+ * time   : 2021/04/16
+ * desc   : 网络访问hook
+ * version: 1.0
  * </pre>
  */
 
 public class EAPIHook {
     public EAPIHook(final Context context) {
-        XposedBridge.hookMethod(ClassHelper.HttpResponse.getResultMethod(context), new XC_MethodHook() {
+        // 先获取目标 Hook 方法
+        java.lang.reflect.Method targetMethod = ClassHelper.HttpResponse.getResultMethod(context);
+        
+        // 健壮性防崩溃校验：如果因网易云版本不匹配导致未能识别出核心方法，则优雅跳过，避免触发 LSPosed NPE 异常
+        if (targetMethod == null) {
+            XposedBridge.log("DolbyBeta: [EAPIHook] ClassHelper 无法匹配当前网易云音乐版本的核心类，跳过此网络 Hook。");
+            return;
+        }
+
+        XposedBridge.hookMethod(targetMethod, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 //代理和黑胶都未开启
