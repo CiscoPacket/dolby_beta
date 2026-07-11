@@ -59,10 +59,12 @@ public class NotificationHelper {
         drawable.draw(canvas);
         Icon icon = Icon.createWithBitmap(bitmap);
 
-        // 针对 Android 12 (SDK 31 / S) 及以上系统，创建 PendingIntent 必须显式指定 FLAG_IMMUTABLE 或 FLAG_MUTABLE
+        // 31 代表 Build.VERSION_CODES.S (Android 12)
+        // 0x04000000 代表 PendingIntent.FLAG_IMMUTABLE
+        // 采用直接硬编码数值，以兼容低 compileSdkVersion 编译环境，同时在 Android 12+ 真机运行中正确生效。
         int pendingIntentFlags = 0;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            pendingIntentFlags = PendingIntent.FLAG_IMMUTABLE;
+        if (Build.VERSION.SDK_INT >= 31) {
+            pendingIntentFlags = 0x04000000; 
         }
 
         builder.setSmallIcon(icon)
