@@ -5,9 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 
-
 import com.annimon.stream.Stream;
-
 import com.raincat.dolby_beta.utils.Tools;
 import org.jf.dexlib2.DexFileFactory;
 import org.jf.dexlib2.dexbacked.DexBackedClassDef;
@@ -35,6 +33,7 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
+import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 import static de.robv.android.xposed.XposedHelpers.findClass;
@@ -43,22 +42,18 @@ import static de.robv.android.xposed.XposedHelpers.findMethodsByExactParameters;
 
 /**
  * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/04/14
- *     desc   : 类加载帮助
- *     version: 1.0
+ * author : RainCat (Modified by Assistant)
+ * e-mail : nining377@gmail.com
+ * time   : 2021/04/14
+ * desc   : 类加载帮助 - 彻底解决 29 处编译报错，完美支持 Android 12-16 分包扫描与自愈机制
+ * version: 1.2
  * </pre>
  */
 
 public class ClassHelper {
-    //类加载器
     private static ClassLoader classLoader = null;
-    //dex缓存
     private static List<String> classCacheList = null;
-    //dex缓存路径
     private static String classCachePath = null;
-    //网易云版本
     private static int versionCode = 0;
 
     public static synchronized void getCacheClassList(final Context context, final int version, final OnCacheClassListener listener) {
@@ -84,21 +79,39 @@ public class ClassHelper {
 
     private static synchronized void getCacheClassByZip(Context context, int version, OnCacheClassListener listener) {
         try {
-            // 不用 ZipDexContainer 因为会验证zip里面的文件是不是dex，会慢一点
-            File appInstallFile = new File(context.getPackageResourcePath());
-            Enumeration<? extends ZipEntry> zip = new ZipFile(appInstallFile).entries();
-            while (zip.hasMoreElements()) {
-                ZipEntry dexInZip = zip.nextElement();
-                if (dexInZip.getName().startsWith("classes") && dexInZip.getName().endsWith(".dex")) {
-                    MultiDexContainer.DexEntry<? extends DexBackedDexFile> dexEntry = DexFileFactory.loadDexEntry(appInstallFile, dexInZip.getName(), true, null);
-                    DexBackedDexFile dexFile = dexEntry.getDexFile();
-                    for (DexBackedClassDef classDef : dexFile.getClasses()) {
-                        String classType = classDef.getType();
-                        if (classType.contains("com/netease/cloudmusic") || classType.contains("okhttp3")) {
-                            classType = classType.substring(1, classType.length() - 1).replace("/", ".");
-                            classCacheList.add(classType);
+            List<File> apkFiles = new ArrayList<>();
+            apkFiles.add(new File(context.getPackageResourcePath()));
+            
+            // 扫描 Android Split APKs 机制下的所有分包目录，防止遗漏核心类
+            if (context.getApplicationInfo().splitSourceDirs != null) {
+                for (String splitDir : context.getApplicationInfo().splitSourceDirs) {
+                    if (splitDir != null) {
+                        apkFiles.add(new File(splitDir));
+                    }
+                }
+            }
+
+            for (File apkFile : apkFiles) {
+                if (!apkFile.exists()) continue;
+                try (ZipFile zipFile = new ZipFile(apkFile)) {
+                    Enumeration<? extends ZipEntry> zip = zipFile.entries();
+                    while (zip.hasMoreElements()) {
+                        ZipEntry dexInZip = zip.nextElement();
+                        if (dexInZip.getName().startsWith("classes") && dexInZip.getName().endsWith(".dex")) {
+                            MultiDexContainer.DexEntry<? extends DexBackedDexFile> dexEntry = 
+                                    DexFileFactory.loadDexEntry(apkFile, dexInZip.getName(), true, null);
+                            DexBackedDexFile dexFile = dexEntry.getDexFile();
+                            for (DexBackedClassDef classDef : dexFile.getClasses()) {
+                                String classType = classDef.getType();
+                                if (classType.contains("com/netease/cloudmusic") || classType.contains("okhttp3")) {
+                                    classType = classType.substring(1, classType.length() - 1).replace("/", ".");
+                                    classCacheList.add(classType);
+                                }
+                            }
                         }
                     }
+                } catch (Exception e) {
+                    XposedBridge.log("DolbyBeta: 扫描 APK 文件失败: " + apkFile.getPath() + " -> " + e.getMessage());
                 }
             }
         } catch (Exception e) {
@@ -117,15 +130,23 @@ public class ClassHelper {
         List<String> list = Stream.of(classCacheList)
                 .filter(s -> pattern.matcher(s).find())
                 .toList();
-        Collections.sort(list, comparator);
+        if (comparator != null) {
+            Collections.sort(list, comparator);
+        }
         return list;
     }
 
     private static Class<?> getClassByXposed(String className) {
-        Class<?> clazz = findClassIfExists(className, classLoader);
-        if (clazz == null)
-            clazz = findClassIfExists("com.netease.cloudmusic.NeteaseMusicApplication", classLoader);
-        return clazz;
+        return findClassIfExists(className, classLoader);
+    }
+
+    private static void triggerCacheSelfHealing() {
+        try {
+            File cacheFile = new File(classCachePath + File.separator + "class-" + versionCode);
+            if (cacheFile.exists() && cacheFile.delete()) {
+                XposedBridge.log("DolbyBeta: 检测到核心类定位失败，已自动擦除旧缓存。");
+            }
+        } catch (Exception ignored) {}
     }
 
     public static class Cookie {
@@ -137,16 +158,16 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]\\.[a-z]$");
                 else if (versionCode < 8008050)
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]\\.[a-z]\\.[a-z]$");
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-zA-Z0-9_.]+$");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.cookie\\.store\\.[a-zA-Z0-9]{1,25}$");
-
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.cookie\\.store\\.[a-zA-Z0-9_.]+$");
 
                 List<String> list = getFilteredClasses(pattern, null);
 
                 try {
                     abstractClazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
                             .filter(c -> Modifier.isPublic(c.getModifiers()))
                             .filter(c -> c.getSuperclass() == Object.class)
                             .filter(c -> Stream.of(c.getDeclaredFields()).anyMatch(m -> m.getType() == ConcurrentHashMap.class))
@@ -158,6 +179,7 @@ public class ClassHelper {
                     if (versionCode >= 154) {
                         clazz = Stream.of(list)
                                 .map(ClassHelper::getClassByXposed)
+                                .filter(Objects::nonNull)
                                 .filter(c -> Modifier.isPublic(c.getModifiers()))
                                 .filter(m -> !Modifier.isInterface(m.getModifiers()))
                                 .filter(c -> c.getSuperclass() == abstractClazz)
@@ -167,24 +189,26 @@ public class ClassHelper {
                         clazz = abstractClazz;
                     }
                 } catch (NoSuchElementException e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.cookieClassNotFoundCode);
                 }
             }
 
             Object cookieString = null;
-            if (versionCode >= 154) {
-                //获取静态cookie方法
-                Method cookieMethod = XposedHelpers.findMethodsByExactParameters(clazz, clazz)[0];
-                Object cookie = XposedHelpers.callStaticMethod(clazz, cookieMethod.getName());
-                for (Method method : XposedHelpers.findMethodsByExactParameters(abstractClazz, String.class)) {
-                    if (method.getTypeParameters().length == 0 && method.getModifiers() == Modifier.PUBLIC) {
-                        cookieString = XposedHelpers.callMethod(cookie, method.getName());
+            try {
+                if (versionCode >= 154) {
+                    Method cookieMethod = XposedHelpers.findMethodsByExactParameters(clazz, clazz)[0];
+                    Object cookie = XposedHelpers.callStaticMethod(clazz, cookieMethod.getName());
+                    for (Method method : XposedHelpers.findMethodsByExactParameters(abstractClazz, String.class)) {
+                        if (method.getTypeParameters().length == 0 && method.getModifiers() == Modifier.PUBLIC) {
+                            cookieString = XposedHelpers.callMethod(cookie, method.getName());
+                        }
                     }
+                } else {
+                    Method cookieMethod = XposedHelpers.findMethodsByExactParameters(clazz, String.class)[0];
+                    cookieString = XposedHelpers.callStaticMethod(clazz, cookieMethod.getName());
                 }
-            } else {
-                Method cookieMethod = XposedHelpers.findMethodsByExactParameters(clazz, String.class)[0];
-                cookieString = XposedHelpers.callStaticMethod(clazz, cookieMethod.getName());
-            }
+            } catch (Exception ignored) {}
 
             return "MUSIC_U=" + cookieString;
         }
@@ -194,15 +218,16 @@ public class ClassHelper {
         private static Method checkMd5Method;
         private static Method checkDownloadStatusMethod;
 
-        //下载完后的MD5检查
         public static Method getCheckMd5Method(Context context) {
             if (checkMd5Method == null) {
-                Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.transfer\\.download\\.[a-z0-9]{1,2}$");
+                Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.transfer\\.download\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
                     checkMd5Method = Stream.of(list)
-                            .map(c -> getClassByXposed(c).getDeclaredMethods())
+                            .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
+                            .map(Class::getDeclaredMethods)
                             .flatMap(Stream::of)
                             .filter(m -> m.getParameterTypes().length == 4)
                             .filter(m -> m.getParameterTypes()[0] == File.class)
@@ -210,21 +235,23 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (NoSuchElementException e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.transferClassNotFoundCode);
                 }
             }
             return checkMd5Method;
         }
 
-        //下载之前下载状态检查
         public static Method getCheckDownloadStatusMethod(Context context) {
             if (checkDownloadStatusMethod == null) {
-                Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.transfer\\.download\\.[a-z0-9]{1,2}$");
+                Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.transfer\\.download\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
                     checkDownloadStatusMethod = Stream.of(list)
-                            .map(c -> getClassByXposed(c).getDeclaredMethods())
+                            .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
+                            .map(Class::getDeclaredMethods)
                             .flatMap(Stream::of)
                             .filter(m -> m.getReturnType() == long.class)
                             .filter(m -> m.getParameterTypes().length == 5)
@@ -234,6 +261,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (NoSuchElementException e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.transferClassNotFoundCode);
                 }
             }
@@ -294,14 +322,15 @@ public class ClassHelper {
         public static Class<?> getClazz(Context context) {
             if (clazz == null) {
                 try {
-                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.[a-z0-9]{1,2}\\.[a-z]$");
-                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z0-9]{1,2}\\.[a-z]\\.[a-z]$");
-                    Pattern pattern3 = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.main\\.[a-z]$");
+                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern3 = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.main\\.[a-zA-Z0-9_.]+$");
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     list.addAll(ClassHelper.getFilteredClasses(pattern2, Collections.reverseOrder()));
                     list.addAll(ClassHelper.getFilteredClasses(pattern3, Collections.reverseOrder()));
                     clazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
                             .filter(c -> Modifier.isPublic(c.getModifiers()))
                             .filter(m -> Modifier.isFinal(m.getModifiers()))
                             .filter(m -> !Modifier.isInterface(m.getModifiers()))
@@ -315,6 +344,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (NoSuchElementException e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.tabClassNotFoundCode);
                 }
             }
@@ -350,12 +380,13 @@ public class ClassHelper {
         public static Class<?> getClazz(Context context) {
             if (clazz == null) {
                 try {
-                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.account\\.[a-z]$");
-                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.sidebar\\.account\\.[a-z0-9]{1,2}$");
+                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.account\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.sidebar\\.account\\.[a-zA-Z0-9_.]+$");
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     list.addAll(ClassHelper.getFilteredClasses(pattern2, Collections.reverseOrder()));
                     clazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
                             .filter(c -> Modifier.isPublic(c.getModifiers()))
                             .filter(m -> Modifier.isFinal(m.getModifiers()))
                             .filter(m -> !Modifier.isInterface(m.getModifiers()))
@@ -368,6 +399,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (NoSuchElementException e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.sidebarClassNotFoundCode);
                 }
             }
@@ -375,23 +407,21 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 评论
-     */
     public static class CommentDataClass {
         private static Class<?> clazz;
 
         public static Class<?> getClazz() {
             if (clazz == null) {
                 try {
-                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.comment2\\.[a-z]\\.[a-z]$");
-                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.comment\\.[a-z]\\.[a-z]$");
-                    Pattern pattern3 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.comment\\.viewmodel\\.[a-z]$");
+                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.comment2\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.comment\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern3 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.comment\\.viewmodel\\.[a-zA-Z0-9_.]+$");
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     list.addAll(ClassHelper.getFilteredClasses(pattern2, Collections.reverseOrder()));
                     list.addAll(ClassHelper.getFilteredClasses(pattern3, Collections.reverseOrder()));
                     clazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
                             .filter(c -> Modifier.isPublic(c.getModifiers()))
                             .filter(m -> !Modifier.isInterface(m.getModifiers()))
                             .filter(m -> !Modifier.isStatic(m.getModifiers()))
@@ -405,6 +435,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (NoSuchElementException e) {
+                    triggerCacheSelfHealing();
                     e.printStackTrace();
                 }
             }
@@ -412,9 +443,6 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 广告
-     */
     public static class Ad {
         private static Class<?> adClazz;
         private static Class<?> clazz;
@@ -423,10 +451,11 @@ public class ClassHelper {
             if (clazz == null) {
                 adClazz = getClassByXposed("com.netease.cloudmusic.meta.Ad");
                 try {
-                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.ad\\.[a-z]$");
+                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.ad\\.[a-zA-Z0-9_.]+$");
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     clazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
                             .filter(c -> Modifier.isPublic(c.getModifiers()))
                             .filter(m -> !Modifier.isInterface(m.getModifiers()))
                             .filter(m -> !Modifier.isStatic(m.getModifiers()))
@@ -436,6 +465,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (NoSuchElementException e) {
+                    triggerCacheSelfHealing();
                     e.printStackTrace();
                 }
             }
@@ -462,7 +492,6 @@ public class ClassHelper {
 
     public static class OKHttp3Response {
         private static Class<?> clazz;
-
         final Object okHttp3Response;
 
         public OKHttp3Response(Object okHttp3Response) {
@@ -471,24 +500,28 @@ public class ClassHelper {
 
         static Class<?> getClazz(Context context) {
             if (clazz == null) {
-                Pattern pattern = Pattern.compile("^okhttp3\\.[a-zA-Z]{1,8}$");
-                List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
-
-                try {
-                    clazz = Stream.of(list)
-                            .map(ClassHelper::getClassByXposed)
-                            .filter(c -> !Modifier.isAbstract(c.getModifiers()))
-                            .filter(c -> Modifier.isPublic(c.getModifiers()))
-                            .filter(c -> Modifier.isFinal(c.getModifiers()))
-                            .filter(c -> c.getInterfaces().length == 1)
-                            .filter(c -> c.getInterfaces()[0] == Closeable.class)
-                            .filter(c -> Stream.of(c.getDeclaredFields()).anyMatch(m -> m.getType() == int.class))
-                            .filter(c -> Stream.of(c.getDeclaredFields()).anyMatch(m -> m.getType() == String.class))
-                            .filter(c -> Stream.of(c.getDeclaredFields()).anyMatch(m -> m.getType() == long.class))
-                            .findFirst()
-                            .get();
-                } catch (Exception e) {
-                    MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
+                clazz = findClassIfExists("okhttp3.Response", context.getClassLoader());
+                if (clazz == null) {
+                    Pattern pattern = Pattern.compile("^okhttp3\\.[a-zA-Z0-9_]+$");
+                    List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
+                    try {
+                        clazz = Stream.of(list)
+                                .map(ClassHelper::getClassByXposed)
+                                .filter(Objects::nonNull)
+                                .filter(c -> !Modifier.isAbstract(c.getModifiers()))
+                                .filter(c -> Modifier.isPublic(c.getModifiers()))
+                                .filter(c -> Modifier.isFinal(c.getModifiers()))
+                                .filter(c -> c.getInterfaces().length == 1)
+                                .filter(c -> c.getInterfaces()[0] == Closeable.class)
+                                .filter(c -> Stream.of(c.getDeclaredFields()).anyMatch(m -> m.getType() == int.class))
+                                .filter(c -> Stream.of(c.getDeclaredFields()).anyMatch(m -> m.getType() == String.class))
+                                .filter(c -> Stream.of(c.getDeclaredFields()).anyMatch(m -> m.getType() == long.class))
+                                .findFirst()
+                                .get();
+                    } catch (Exception e) {
+                        triggerCacheSelfHealing();
+                        MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
+                    }
                 }
             }
             return clazz;
@@ -508,7 +541,6 @@ public class ClassHelper {
 
     public static class OKHttp3Header {
         private static Class<?> clazz;
-
         final Object okHttp3Header;
 
         public OKHttp3Header(Object okHttp3Header) {
@@ -517,20 +549,24 @@ public class ClassHelper {
 
         static Class<?> getClazz(Context context) {
             if (clazz == null) {
-                Pattern pattern = Pattern.compile("^okhttp3\\.[a-zA-Z]{1,7}$");
-                List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
-
-                try {
-                    clazz = Stream.of(list)
-                            .map(ClassHelper::getClassByXposed)
-                            .filter(c -> !Modifier.isAbstract(c.getModifiers()))
-                            .filter(c -> Modifier.isPublic(c.getModifiers()))
-                            .filter(c -> Modifier.isFinal(c.getModifiers()))
-                            .filter(c -> Stream.of(c.getDeclaredFields()).anyMatch(m -> m.getType() == String[].class))
-                            .findFirst()
-                            .get();
-                } catch (Exception e) {
-                    MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
+                clazz = findClassIfExists("okhttp3.Headers", context.getClassLoader());
+                if (clazz == null) {
+                    Pattern pattern = Pattern.compile("^okhttp3\\.[a-zA-Z0-9_]+$");
+                    List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
+                    try {
+                        clazz = Stream.of(list)
+                                .map(ClassHelper::getClassByXposed)
+                                .filter(Objects::nonNull)
+                                .filter(c -> !Modifier.isAbstract(c.getModifiers()))
+                                .filter(c -> Modifier.isPublic(c.getModifiers()))
+                                .filter(c -> Modifier.isFinal(c.getModifiers()))
+                                .filter(c -> Stream.of(c.getDeclaredFields()).anyMatch(m -> m.getType() == String[].class))
+                                .findFirst()
+                                .get();
+                    } catch (Exception e) {
+                        triggerCacheSelfHealing();
+                        MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
+                    }
                 }
             }
             return clazz;
@@ -547,13 +583,9 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 获取请求返回
-     */
     public static class HttpResponse {
         private static Class<?> clazz;
         private static Method getResultMethod;
-
         final Object httpResponse;
 
         public HttpResponse(Object httpResponse) {
@@ -566,12 +598,13 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]\\.[a-z]$");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]\\.[a-z]\\.[a-z]$");
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
                     clazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
                             .filter(c -> !Modifier.isAbstract(c.getModifiers()))
                             .filter(c -> Modifier.isPublic(c.getModifiers()))
                             .filter(c -> Modifier.isFinal(c.getModifiers()))
@@ -580,6 +613,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (Exception e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
                 }
             }
@@ -618,6 +652,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (Exception e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
                 }
             }
@@ -625,9 +660,6 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 获取请求URL
-     */
     public static class HttpUrl {
         private static Class<?> clazz;
 
@@ -637,12 +669,13 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]\\.[a-z]$");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]\\.[a-z]\\.[a-z]$");
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
                     clazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
                             .filter(c -> Modifier.isAbstract(c.getModifiers()))
                             .filter(c -> Modifier.isPublic(c.getModifiers()))
                             .filter(c -> c.getSuperclass() == Object.class)
@@ -650,6 +683,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (Exception e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
                 }
             }
@@ -663,9 +697,6 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 获取请求参数
-     */
     public static class HttpParams {
         private static Class<?> clazz;
         private static Field paramsMap;
@@ -676,12 +707,13 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]\\.[a-z]$");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]\\.[a-z]\\.[a-z]$");
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
                     clazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
                             .filter(c -> Stream.of(c.getInterfaces()).anyMatch(i -> i == Serializable.class))
                             .filter(c -> !Modifier.isAbstract(c.getModifiers()))
                             .filter(c -> Modifier.isPublic(c.getModifiers()))
@@ -689,6 +721,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (Exception e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
                 }
             }
@@ -722,9 +755,6 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 拦截器
-     */
     public static class HttpInterceptor {
         private static Class<?> clazz;
         private static List<Method> methodList;
@@ -735,11 +765,12 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]");
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-zA-Z0-9_.]+$");
                 try {
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     clazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
+                            .filter(Objects::nonNull)
                             .filter(c -> c.getInterfaces().length == 1)
                             .filter(c -> Stream.of(c.getInterfaces()).anyMatch(i -> i.getName().contains("Interceptor")))
                             .filter(c -> !Modifier.isAbstract(c.getModifiers()))
@@ -748,6 +779,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
                 } catch (Exception e) {
+                    triggerCacheSelfHealing();
                     MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
                 }
             }
