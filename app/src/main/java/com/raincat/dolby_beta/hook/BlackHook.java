@@ -58,16 +58,38 @@ public class BlackHook {
                             JSONObject object = (JSONObject) param.args[0];
                             if (object.optInt("code") == 200 && !object.isNull("data") && !object.getJSONObject("data").isNull("userId") &&
                                     object.getJSONObject("data").optLong("userId") == Long.parseLong(ExtraHelper.getExtraDate(ExtraHelper.USER_ID))) {
-                                Gson gson = new Gson();
-                                UserPrivilegeBean userPrivilegeBean = gson.fromJson(object.toString(), UserPrivilegeBean.class);
-                                userPrivilegeBean.getData().getAssociator().setExpireTime(System.currentTimeMillis() + 31536000000L);
-                                userPrivilegeBean.getData().getAssociator().setVipCode(100);
-                                userPrivilegeBean.getData().getMusicPackage().setExpireTime(System.currentTimeMillis() + 31536000000L);
-                                userPrivilegeBean.getData().getMusicPackage().setVipCode(220);
-                                userPrivilegeBean.getData().setRedVipAnnualCount(1);
-                                userPrivilegeBean.getData().setRedVipLevel(9);
-                                object = new JSONObject(gson.toJson(userPrivilegeBean));
-                                param.args[0] = object;
+                                try {
+        // 直接获取并修改原生 JSONObject，抛弃脆弱的 Gson
+                                    JSONObject data = object.getJSONObject("data");
+
+        // 1. 修改 associator (黑胶)
+                                    JSONObject associator = data.optJSONObject("associator");
+                                    if (associator == null) {
+                                        associator = new JSONObject();
+                                        data.put("associator", associator);
+                                    }
+                                    associator.put("expireTime", System.currentTimeMillis() + 31536000000L);
+                                    associator.put("vipCode", 100);
+
+        // 2. 修改 musicPackage (音乐包)
+                                    JSONObject musicPackage = data.optJSONObject("musicPackage");
+                                    if (musicPackage == null) {
+                                        musicPackage = new JSONObject();
+                                        data.put("musicPackage", musicPackage);
+                                    }
+                                    musicPackage.put("expireTime", System.currentTimeMillis() + 31536000000L);
+                                    musicPackage.put("vipCode", 220);
+
+        // 3. 修改红黑胶等级
+                                    data.put("redVipAnnualCount", 1);
+                                    data.put("redVipLevel", 9);
+
+        // 重新赋值回参数
+                                    param.args[0] = object;
+                                } catch (Exception e) {
+        // 防止意外的 JSON 结构变动导致崩溃
+                                    e.printStackTrace();
+                                }
                             }
                         }
                     });
