@@ -19,7 +19,7 @@ import com.raincat.dolby_beta.hook.BlackHook;
 import com.raincat.dolby_beta.hook.CdnHook;
 import com.raincat.dolby_beta.hook.CommentHotClickHook;
 import com.raincat.dolby_beta.hook.DownloadMD5Hook;
-import com.raincat.dolby_beta.hook.EAPIHook;
+import com.raincat.dolby_beta.hook.SongUrlHook;
 import com.raincat.dolby_beta.hook.GrayHook;
 import com.raincat.dolby_beta.hook.HideBannerHook;
 import com.raincat.dolby_beta.hook.HideBubbleHook;
@@ -46,11 +46,10 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 /**
  * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/09/22
- *     desc   : hook入口
- *     version: 1.0
+ * author : RainCat (Modified by Assistant)
+ * time   : 2021/09/22
+ * desc   : hook入口 - 移除极度不稳定的EAPIHook，换装高层硬编码业务代理SongUrlHook
+ * version: 1.1
  * </pre>
  */
 
@@ -80,21 +79,21 @@ public class Hook {
 
                         final String processName = Tools.getCurrentProcessName(context);
                         if (processName.equals(PACKAGE_NAME)) {
-                            //设置
+                            //设置页面
                             new SettingHook(context, versionCode);
                             //总开关
                             if (!SettingHelper.getInstance().getSetting(SettingHelper.master_key))
                                 return;
                             //音源代理
                             new ProxyHook(context, false);
-                            //黑胶
+                            //黑胶 (新重构优化后的非Gson版，杜绝异常)
                             if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
                                 new BlackHook(context, versionCode);
                                 deleteAdAndTinker();
                             }
                             //一起听
                             if (SettingHelper.getInstance().isEnable(SettingHelper.listen_key)) {
-                                new ListentogetherHook(context,versionCode);
+                                new ListentogetherHook(context, versionCode);
                             }
                             //不变灰
                             new GrayHook(context);
@@ -108,12 +107,13 @@ public class Hook {
                             new InternalDialogHook(context, versionCode);
                             //修复登录失败
                             new LoginFixHook(context);
-//                            new TestHook(context);
+
+                            // 关键适配1：部署全新的硬编码明文音源 Hook (SongUrlHook)，代替原先极不稳定的 EAPIHook
+                            new SongUrlHook(context);
+
                             ClassHelper.getCacheClassList(context, versionCode, () -> {
                                 //获取账号信息
                                 new UserProfileHook(context);
-                                //网络访问
-                                new EAPIHook(context);
                                 //下载MD5校验
                                 new DownloadMD5Hook(context);
                                 //夜间模式
@@ -161,6 +161,10 @@ public class Hook {
                         } else if (processName.equals(PACKAGE_NAME + ":play") && SettingHelper.getInstance().getSetting(SettingHelper.master_key)) {
                             //音源代理
                             new ProxyHook(context, true);
+                            
+                            // 关键适配2：在播放子进程中也注入明文音源拦截器，保证无损/代理链接重定向无感完美加载
+                            new SongUrlHook(context);
+
                             IntentFilter intentFilter = new IntentFilter();
                             intentFilter.addAction(msg_hook_play_process);
                             context.registerReceiver(new BroadcastReceiver() {
@@ -168,7 +172,6 @@ public class Hook {
                                 public void onReceive(Context c, Intent intent) {
                                     if (msg_hook_play_process.equals(intent.getAction())) {
                                         ClassHelper.getCacheClassList(context, versionCode, () -> {
-                                            new EAPIHook(context);
                                             new CdnHook(context, versionCode);
                                         });
                                     }
@@ -195,7 +198,6 @@ public class Hook {
      * 删掉广告和热修复
      */
     private void deleteAdAndTinker() throws IOException {
-        //广告缓存路径
         String CACHE_PATH = Environment.getExternalStorageDirectory() + "/netease/cloudmusic/Ad";
         String CACHE_PATH2 = Environment.getExternalStorageDirectory() + "/Android/data/com.netease.cloudmusic/cache/Ad";
 
