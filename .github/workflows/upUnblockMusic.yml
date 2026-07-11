@@ -36,7 +36,7 @@ jobs:
         
     - name: Update UnblockNeteaseMusic
       run: |
-        git clone --depth=1 https://github.com/UnblockNeteaseMusic/server.git
+        git clone --depth=1 https://github.com/UnblockNeteaseMusic/server.git -b dependabot/npm_and_yarn/fast-uri-3.1.2
         cd server && zip -r ../UnblockNeteaseMusic.zip . && cd ..
         
     - name: Decompile and modify
