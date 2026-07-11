@@ -5,9 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 
-
 import com.annimon.stream.Stream;
-
 import com.raincat.dolby_beta.utils.Tools;
 import org.jf.dexlib2.DexFileFactory;
 import org.jf.dexlib2.dexbacked.DexBackedClassDef;
@@ -43,11 +41,11 @@ import static de.robv.android.xposed.XposedHelpers.findMethodsByExactParameters;
 
 /**
  * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/04/14
- *     desc   : 类加载帮助
- *     version: 1.0
+ * author : RainCat (Modified by Assistant)
+ * e-mail : nining377@gmail.com
+ * time   : 2021/04/14
+ * desc   : 类加载帮助 - 移除死板的混淆层级正则匹配，完美适配新版网易云音乐
+ * version: 1.1
  * </pre>
  */
 
@@ -84,7 +82,6 @@ public class ClassHelper {
 
     private static synchronized void getCacheClassByZip(Context context, int version, OnCacheClassListener listener) {
         try {
-            // 不用 ZipDexContainer 因为会验证zip里面的文件是不是dex，会慢一点
             File appInstallFile = new File(context.getPackageResourcePath());
             Enumeration<? extends ZipEntry> zip = new ZipFile(appInstallFile).entries();
             while (zip.hasMoreElements()) {
@@ -137,10 +134,9 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]\\.[a-z]$");
                 else if (versionCode < 8008050)
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]\\.[a-z]\\.[a-z]$");
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-zA-Z0-9_.]+$");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.cookie\\.store\\.[a-zA-Z0-9]{1,25}$");
-
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.cookie\\.store\\.[a-zA-Z0-9_.]+$");
 
                 List<String> list = getFilteredClasses(pattern, null);
 
@@ -155,7 +151,7 @@ public class ClassHelper {
                             .findFirst()
                             .get();
 
-                  if (versionCode >= 154) {
+                    if (versionCode >= 154) {
                         clazz = Stream.of(list)
                                 .map(ClassHelper::getClassByXposed)
                                 .filter(c -> Modifier.isPublic(c.getModifiers()))
@@ -172,11 +168,10 @@ public class ClassHelper {
             }
 
             Object cookieString = null;
-          if (versionCode >= 154) {
-                //获取静态cookie方法
+            if (versionCode >= 154) {
                 Method cookieMethod = XposedHelpers.findMethodsByExactParameters(clazz, clazz)[0];
                 Object cookie = XposedHelpers.callStaticMethod(clazz, cookieMethod.getName());
-              for (Method method : XposedHelpers.findMethodsByExactParameters(abstractClazz, String.class)) {
+                for (Method method : XposedHelpers.findMethodsByExactParameters(abstractClazz, String.class)) {
                     if (method.getTypeParameters().length == 0 && method.getModifiers() == Modifier.PUBLIC) {
                         cookieString = XposedHelpers.callMethod(cookie, method.getName());
                     }
@@ -194,10 +189,9 @@ public class ClassHelper {
         private static Method checkMd5Method;
         private static Method checkDownloadStatusMethod;
 
-        //下载完后的MD5检查
         public static Method getCheckMd5Method(Context context) {
             if (checkMd5Method == null) {
-                Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.transfer\\.download\\.[a-z0-9]{1,2}$");
+                Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.transfer\\.download\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
@@ -216,10 +210,9 @@ public class ClassHelper {
             return checkMd5Method;
         }
 
-        //下载之前下载状态检查
         public static Method getCheckDownloadStatusMethod(Context context) {
             if (checkDownloadStatusMethod == null) {
-                Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.transfer\\.download\\.[a-z0-9]{1,2}$");
+                Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.transfer\\.download\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
@@ -294,9 +287,9 @@ public class ClassHelper {
         public static Class<?> getClazz(Context context) {
             if (clazz == null) {
                 try {
-                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.[a-z0-9]{1,2}\\.[a-z]$");
-                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z0-9]{1,2}\\.[a-z]\\.[a-z]$");
-                    Pattern pattern3 = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.main\\.[a-z]$");
+                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern3 = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.main\\.[a-zA-Z0-9_.]+$");
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     list.addAll(ClassHelper.getFilteredClasses(pattern2, Collections.reverseOrder()));
                     list.addAll(ClassHelper.getFilteredClasses(pattern3, Collections.reverseOrder()));
@@ -350,8 +343,8 @@ public class ClassHelper {
         public static Class<?> getClazz(Context context) {
             if (clazz == null) {
                 try {
-                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.account\\.[a-z]$");
-                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.sidebar\\.account\\.[a-z0-9]{1,2}$");
+                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.account\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.sidebar\\.account\\.[a-zA-Z0-9_.]+$");
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     list.addAll(ClassHelper.getFilteredClasses(pattern2, Collections.reverseOrder()));
                     clazz = Stream.of(list)
@@ -375,18 +368,15 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 评论
-     */
     public static class CommentDataClass {
         private static Class<?> clazz;
 
         public static Class<?> getClazz() {
             if (clazz == null) {
                 try {
-                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.comment2\\.[a-z]\\.[a-z]$");
-                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.comment\\.[a-z]\\.[a-z]$");
-                    Pattern pattern3 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.comment\\.viewmodel\\.[a-z]$");
+                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.comment2\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern2 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.comment\\.[a-zA-Z0-9_.]+$");
+                    Pattern pattern3 = Pattern.compile("^com\\.netease\\.cloudmusic\\.music\\.biz\\.comment\\.viewmodel\\.[a-zA-Z0-9_.]+$");
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     list.addAll(ClassHelper.getFilteredClasses(pattern2, Collections.reverseOrder()));
                     list.addAll(ClassHelper.getFilteredClasses(pattern3, Collections.reverseOrder()));
@@ -412,9 +402,6 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 广告
-     */
     public static class Ad {
         private static Class<?> adClazz;
         private static Class<?> clazz;
@@ -423,7 +410,7 @@ public class ClassHelper {
             if (clazz == null) {
                 adClazz = getClassByXposed("com.netease.cloudmusic.meta.Ad");
                 try {
-                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.ad\\.[a-z]$");
+                    Pattern pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.module\\.ad\\.[a-zA-Z0-9_.]+$");
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     clazz = Stream.of(list)
                             .map(ClassHelper::getClassByXposed)
@@ -471,7 +458,8 @@ public class ClassHelper {
 
         static Class<?> getClazz(Context context) {
             if (clazz == null) {
-                Pattern pattern = Pattern.compile("^okhttp3\\.[a-zA-Z]{1,8}$");
+                // 放宽 okhttp3 包下子类的正则匹配
+                Pattern pattern = Pattern.compile("^okhttp3\\.[a-zA-Z0-9_]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
@@ -517,7 +505,7 @@ public class ClassHelper {
 
         static Class<?> getClazz(Context context) {
             if (clazz == null) {
-                Pattern pattern = Pattern.compile("^okhttp3\\.[a-zA-Z]{1,7}$");
+                Pattern pattern = Pattern.compile("^okhttp3\\.[a-zA-Z0-9_]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
@@ -547,9 +535,6 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 获取请求返回
-     */
     public static class HttpResponse {
         private static Class<?> clazz;
         private static Method getResultMethod;
@@ -566,7 +551,8 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]\\.[a-z]$");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]\\.[a-z]\\.[a-z]$");
+                    // 放开对网络库子包的层级及大小写、数字混淆字符的硬性匹配
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
@@ -625,9 +611,6 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 获取请求URL
-     */
     public static class HttpUrl {
         private static Class<?> clazz;
 
@@ -637,7 +620,7 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]\\.[a-z]$");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]\\.[a-z]\\.[a-z]$");
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
@@ -663,9 +646,6 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 获取请求参数
-     */
     public static class HttpParams {
         private static Class<?> clazz;
         private static Field paramsMap;
@@ -676,7 +656,7 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]\\.[a-z]$");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]\\.[a-z]\\.[a-z]$");
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-zA-Z0-9_.]+$");
                 List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
 
                 try {
@@ -722,9 +702,6 @@ public class ClassHelper {
         }
     }
 
-    /**
-     * 拦截器
-     */
     public static class HttpInterceptor {
         private static Class<?> clazz;
         private static List<Method> methodList;
@@ -735,7 +712,7 @@ public class ClassHelper {
                 if (versionCode < 154)
                     pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.[a-z]\\.[a-z]\\.[a-z]");
                 else
-                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-z]");
+                    pattern = Pattern.compile("^com\\.netease\\.cloudmusic\\.network\\.[a-zA-Z0-9_.]+$");
                 try {
                     List<String> list = ClassHelper.getFilteredClasses(pattern, Collections.reverseOrder());
                     clazz = Stream.of(list)
