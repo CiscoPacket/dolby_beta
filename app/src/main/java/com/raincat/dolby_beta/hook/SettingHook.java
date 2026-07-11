@@ -1,6 +1,7 @@
 package com.raincat.dolby_beta.hook;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
@@ -56,7 +57,6 @@ import com.raincat.dolby_beta.view.setting.UpdateView;
 import com.raincat.dolby_beta.view.setting.ListenView;
 import com.raincat.dolby_beta.view.setting.WarnView;
 
-
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -64,6 +64,7 @@ import java.util.List;
 import java.util.Map;
 
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
@@ -71,10 +72,10 @@ import static de.robv.android.xposed.XposedHelpers.findClassIfExists;
 
 /**
  * <pre>
- *     author : RainCat
- *     time   : 2019/10/26
- *     desc   : 设置
- *     version: 1.0
+ * author : RainCat (Modified by Assistant)
+ * time   : 2019/10/26
+ * desc   : 设置注入适配
+ * version: 1.1
  * </pre>
  */
 public class SettingHook {
@@ -85,16 +86,19 @@ public class SettingHook {
 
     private BroadcastReceiver broadcastReceiver;
 
-    public SettingHook(Context context,int versionCode) {
-        //一切的前提，没这个页面连设置都进不去
-        if(versionCode>=8007000)
-        {
-            SettingActivity="com.netease.cloudmusic.music.biz.setting.activity.SettingActivity";
-        }else
-        {
-            SettingActivity="com.netease.cloudmusic.activity.SettingActivity";
+    public SettingHook(Context context, int versionCode) {
+        if (versionCode >= 8007000) {
+            SettingActivity = "com.netease.cloudmusic.music.biz.setting.activity.SettingActivity";
+        } else {
+            SettingActivity = "com.netease.cloudmusic.activity.SettingActivity";
         }
         Class<?> settingActivityClass = findClassIfExists(SettingActivity, context.getClassLoader());
+        if (settingActivityClass == null) {
+            XposedBridge.log("DolbyBeta: 警告，未找到设置界面 Activity 类 " + SettingActivity);
+            return;
+        }
+
+        // 尝试自动匹配开关组件名称
         Field[] allFields = settingActivityClass.getDeclaredFields();
         for (Field field : allFields) {
             if (field.getType().getName().contains("Switch")) {
@@ -107,11 +111,19 @@ public class SettingHook {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 super.afterHookedMethod(param);
-                Context c = (Context) param.thisObject;
-                //注册广播
+                final Activity activity = (Activity) param.thisObject;
+                Context c = activity.getApplicationContext() != null ? activity.getApplicationContext() : activity;
+                
+                // 注册控制面板内部广播
                 registerBroadcastReceiver(c);
-                //初始化控件
-                initView(c);
+
+                // 使用 try-catch 保护注入逻辑，防止因为新版本混淆或无开关组件导致的崩溃
+                try {
+                    initView(activity);
+                } catch (Throwable t) {
+                    XposedBridge.log("DolbyBeta: 尝试在原生控件上方注入设置按钮失败，启用强力兜底方案！失败原因: " + t.getMessage());
+                    injectViewFallback(activity);
+                }
             }
         });
 
@@ -119,22 +131,34 @@ public class SettingHook {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 super.beforeHookedMethod(param);
-                if (broadcastReceiver != null)
-                    ((Context) param.thisObject).unregisterReceiver(broadcastReceiver);
+                if (broadcastReceiver != null) {
+                    try {
+                        Context context = (Context) param.thisObject;
+                        context.unregisterReceiver(broadcastReceiver);
+                    } catch (Exception ignored) {}
+                }
             }
         });
     }
 
-    private void initView(final Context context) {
+    private void initView(final Activity activity) throws Exception {
         TextView originalText = null;
-        //获取开关控件
-        View switchCompat = (View) XposedHelpers.getObjectField(context, switchViewName);
-        //获取开关控件爸爸
+        if (switchViewName == null || switchViewName.isEmpty()) {
+            throw new NoSuchFieldException("未匹配到 Switch 开关成员变量名称");
+        }
+        
+        // 获取开关控件
+        View switchCompat = (View) XposedHelpers.getObjectField(activity, switchViewName);
+        if (switchCompat == null) {
+            throw new NullPointerException("获取到的 Switch 开关为 null");
+        }
+        
+        // 获取开关控件爸爸
         ViewGroup parent = (ViewGroup) switchCompat.getParent();
-        //获取开关控件爷爷
+        // 获取开关控件爷爷
         ViewGroup grandparent = (ViewGroup) parent.getParent();
 
-        LinearLayout linearLayout = new LinearLayout(context);
+        LinearLayout linearLayout = new LinearLayout(activity);
         ViewGroup.LayoutParams layoutParams = parent.getLayoutParams();
         linearLayout.setLayoutParams(layoutParams);
         linearLayout.setBackground(parent.getBackground());
@@ -142,11 +166,12 @@ public class SettingHook {
         linearLayout.setOrientation(LinearLayout.HORIZONTAL);
         grandparent.addView(linearLayout, 0);
 
-        titleView = new TextView(context);
+        titleView = new TextView(activity);
         linearLayout.addView(titleView);
-        subView = new TextView(context);
+        subView = new TextView(activity);
         linearLayout.addView(subView);
         refresh();
+        
         start:
         for (int i = 0; i < parent.getChildCount(); i++) {
             if (parent.getChildAt(i) instanceof TextView) {
@@ -165,16 +190,90 @@ public class SettingHook {
         if (originalText != null) {
             titleView.setTextColor(originalText.getTextColors());
             titleView.setTextSize(TypedValue.COMPLEX_UNIT_PX, originalText.getTextSize());
-            titleView.setPadding(originalText.getPaddingLeft() == 0 ? Tools.dp2px(context, 10) : originalText.getPaddingLeft(), 0, 0, 0);
+            titleView.setPadding(originalText.getPaddingLeft() == 0 ? Tools.dp2px(activity, 10) : originalText.getPaddingLeft(), 0, 0, 0);
             subView.setTextColor(originalText.getTextColors());
             subView.setTextSize(TypedValue.COMPLEX_UNIT_PX, (int) (originalText.getTextSize() / 3.0 * 2.0));
         }
 
-        linearLayout.setOnClickListener(view -> showSettingDialog(context));
+        linearLayout.setOnClickListener(view -> showSettingDialog(activity));
+    }
+
+    /**
+     * 强力追加式兜底方案。
+     * 无论新旧版网易云音乐，直接获取 DecorView 的主视图容器，强行在设置页最下方塞入杜比大喇叭入口。
+     */
+    private void injectViewFallback(final Activity activity) {
+        try {
+            // 获取 Activity 的顶层 Content 容器（最安全的安卓标准布局根节点）
+            final ViewGroup contentParent = activity.findViewById(android.R.id.content);
+            if (contentParent == null) return;
+
+            // 尝试在最下面寻找可能的 ScrollView，如果没有，就自己包装一个置顶视图
+            View mainContainer = contentParent.getChildAt(0);
+            if (!(mainContainer instanceof ViewGroup)) return;
+            ViewGroup rootGroup = (ViewGroup) mainContainer;
+
+            // 寻找最深层的 LinearLayout 以便进行追加。如果找不到则退而求其次直接加在 Root
+            ViewGroup targetLayout = findLinearLayoutDeep(rootGroup);
+            if (targetLayout == null) {
+                targetLayout = rootGroup;
+            }
+
+            final Context context = activity;
+            LinearLayout appendLayout = new LinearLayout(context);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Tools.dp2px(context, 55));
+            lp.setMargins(0, Tools.dp2px(context, 10), 0, 0);
+            appendLayout.setLayoutParams(lp);
+            appendLayout.setOrientation(LinearLayout.HORIZONTAL);
+            appendLayout.setGravity(Gravity.CENTER_VERTICAL);
+            appendLayout.setPadding(Tools.dp2px(context, 15), 0, Tools.dp2px(context, 15), 0);
+            
+            // 设定一个稍微显眼的背景，方便暗黑/亮色主题完美契合
+            TypedValue typedValue = new TypedValue();
+            if (context.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, typedValue, true)) {
+                appendLayout.setBackgroundResource(typedValue.resourceId);
+            }
+
+            titleView = new TextView(context);
+            titleView.setText("杜比大喇叭β [高级设置入口]");
+            titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+            titleView.setTextColor(0xFFE53935); // 醒目的网易云红配色
+            titleView.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+            subView = new TextView(context);
+            subView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 11);
+            subView.setTextColor(0x8A000000);
+
+            appendLayout.addView(titleView);
+            appendLayout.addView(subView);
+            refresh();
+
+            appendLayout.setOnClickListener(view -> showSettingDialog(activity));
+            targetLayout.addView(appendLayout);
+            XposedBridge.log("DolbyBeta: 兜底设置入口成功追加在最下方。");
+        } catch (Throwable e) {
+            XposedBridge.log("DolbyBeta: 致命错误，兜底设置界面注入彻底失败: " + e.getMessage());
+        }
+    }
+
+    private ViewGroup findLinearLayoutDeep(ViewGroup root) {
+        if (root instanceof LinearLayout) {
+            return root;
+        }
+        for (int i = 0; i < root.getChildCount(); i++) {
+            View child = root.getChildAt(i);
+            if (child instanceof ViewGroup) {
+                ViewGroup res = findLinearLayoutDeep((ViewGroup) child);
+                if (res != null) return res;
+            }
+        }
+        return null;
     }
 
     @SuppressLint("SetTextI18n")
     private void refresh() {
+        if (titleView == null || subView == null) return;
         titleView.setText("杜比大喇叭β");
         if (ExtraHelper.getExtraDate(ExtraHelper.USER_ID).equals("-1")) {
             subView.setText("（USERID获取失败）");
@@ -326,17 +425,13 @@ public class SettingHook {
         ProxyHttpView proxyHttpView = new ProxyHttpView(context);
         ProxyPortView proxyPortView = new ProxyPortView(context);
         ProxyOriginalView proxyOriginalView = new ProxyOriginalView(context);
-       // ProxyKuwoView proxykuwoView = new ProxyKuwoView(context);
         ProxyQqView proxyqqView = new ProxyQqView(context);
-        ProxyMiguView proxymiguView = new ProxyMiguView(context);
 
         dialogProxyRoot.addView(new ProxyConfigurationTitleView(context));
         dialogProxyRoot.addView(proxyHttpView);
         dialogProxyRoot.addView(proxyPortView);
         dialogProxyRoot.addView(proxyOriginalView);
-       // dialogProxyRoot.addView(proxykuwoView);
         dialogProxyRoot.addView(proxyqqView);
-       // dialogProxyRoot.addView(proxymiguView);
         new AlertDialog.Builder(context)
                 .setView(dialogProxyRoot)
                 .setCancelable(true)
