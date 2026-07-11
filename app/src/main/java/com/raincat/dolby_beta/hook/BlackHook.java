@@ -2,9 +2,7 @@ package com.raincat.dolby_beta.hook;
 
 import android.content.Context;
 
-import com.google.gson.Gson;
 import com.raincat.dolby_beta.helper.ExtraHelper;
-import com.raincat.dolby_beta.model.UserPrivilegeBean;
 
 import org.json.JSONObject;
 
@@ -18,10 +16,10 @@ import static de.robv.android.xposed.XposedHelpers.findClass;
 
 /**
  * <pre>
- *     author : RainCat
- *     time   : 2019/10/26
- *     desc   : 黑胶，100黑胶，220音乐包
- *     version: 1.0
+ * author : RainCat (Modified by Assistant)
+ * time   : 2019/10/26
+ * desc   : 黑胶会员、无损音质解锁（规避脆弱的 Gson，采用 100% 兼容的原生 JSONObject 直改）
+ * version: 1.1
  * </pre>
  */
 
@@ -40,7 +38,7 @@ public class BlackHook {
                 }
             });
 
-            //主题
+            // 主题破解
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
                     "i", XC_MethodReplacement.returnConstant(0));
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
@@ -50,19 +48,20 @@ public class BlackHook {
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
                     "s", XC_MethodReplacement.returnConstant(false));
         } else {
+            // 核心修复：Hook 用户特权接口。不再使用 GSON 反序列化来回打包，而是直接利用 JSONObject 原生修改，100% 兼容新版本增删字段。
             findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.UserPrivilege", context.getClassLoader()),
                     "fromJson", JSONObject.class, new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                             super.beforeHookedMethod(param);
                             JSONObject object = (JSONObject) param.args[0];
-                            if (object.optInt("code") == 200 && !object.isNull("data") && !object.getJSONObject("data").isNull("userId") &&
-                                    object.getJSONObject("data").optLong("userId") == Long.parseLong(ExtraHelper.getExtraDate(ExtraHelper.USER_ID))) {
+                            if (object != null && object.optInt("code") == 200 && !object.isNull("data") 
+                                    && !object.getJSONObject("data").isNull("userId") 
+                                    && object.getJSONObject("data").optLong("userId") == Long.parseLong(ExtraHelper.getExtraDate(ExtraHelper.USER_ID))) {
                                 try {
-        // 直接获取并修改原生 JSONObject，抛弃脆弱的 Gson
                                     JSONObject data = object.getJSONObject("data");
 
-        // 1. 修改 associator (黑胶)
+                                    // 1. 修改黑胶 VIP 状态与过期时间
                                     JSONObject associator = data.optJSONObject("associator");
                                     if (associator == null) {
                                         associator = new JSONObject();
@@ -71,7 +70,7 @@ public class BlackHook {
                                     associator.put("expireTime", System.currentTimeMillis() + 31536000000L);
                                     associator.put("vipCode", 100);
 
-        // 2. 修改 musicPackage (音乐包)
+                                    // 2. 修改音乐包状态
                                     JSONObject musicPackage = data.optJSONObject("musicPackage");
                                     if (musicPackage == null) {
                                         musicPackage = new JSONObject();
@@ -80,21 +79,20 @@ public class BlackHook {
                                     musicPackage.put("expireTime", System.currentTimeMillis() + 31536000000L);
                                     musicPackage.put("vipCode", 220);
 
-        // 3. 修改红黑胶等级
+                                    // 3. 修改年费标识与红黑胶等级
                                     data.put("redVipAnnualCount", 1);
                                     data.put("redVipLevel", 9);
 
-        // 重新赋值回参数
+                                    // 写回参数执行，完美避开 Class 结构解析异常
                                     param.args[0] = object;
                                 } catch (Exception e) {
-        // 防止意外的 JSON 结构变动导致崩溃
-                                    e.printStackTrace();
+                                    XposedBridge.log("DolbyBeta: 篡改 UserPrivilege 会员信息失败: " + e.getMessage());
                                 }
                             }
                         }
                     });
 
-            //主题
+            // 主题破解
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
                     "getPoints", XC_MethodReplacement.returnConstant(0));
             findAndHookMethod(findClass("com.netease.cloudmusic.theme.core.ThemeInfo", context.getClassLoader()),
@@ -105,7 +103,7 @@ public class BlackHook {
                     "isDigitalAlbum", XC_MethodReplacement.returnConstant(false));
         }
 
-        //音质切换
+        // 音质解除锁定、极高音质等本地强制全开
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
                 "isVipFee", XC_MethodReplacement.returnConstant(false));
         findAndHookMethod(findClass("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", context.getClassLoader()),
@@ -127,7 +125,7 @@ public class BlackHook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         super.afterHookedMethod(param);
-                        //云盘歌曲&运算0x8不等于0
+                        // 云盘歌曲 & 运算 0x8 不等于 0
                         param.setResult(((int) param.getResult() & 0x8) == 0 ? 0 : param.getResult());
                     }
                 });
