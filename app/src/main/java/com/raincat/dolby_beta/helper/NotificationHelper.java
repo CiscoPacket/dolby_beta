@@ -58,8 +58,15 @@ public class NotificationHelper {
         drawable.setBounds(0, 0, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
         drawable.draw(canvas);
         Icon icon = Icon.createWithBitmap(bitmap);
+
+        // 针对 Android 12 (SDK 31 / S) 及以上系统，创建 PendingIntent 必须显式指定 FLAG_IMMUTABLE 或 FLAG_MUTABLE
+        int pendingIntentFlags = 0;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            pendingIntentFlags = PendingIntent.FLAG_IMMUTABLE;
+        }
+
         builder.setSmallIcon(icon)
-                .setContentIntent(PendingIntent.getActivity(context, 0, new Intent(), 0))
+                .setContentIntent(PendingIntent.getActivity(context, 0, new Intent(), pendingIntentFlags))
                 .setContentTitle(title)
                 .setTicker(ticker)
                 .setAutoCancel(true)
