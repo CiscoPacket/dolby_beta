@@ -8,14 +8,11 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.res.ColorStateList;
-import android.graphics.Typeface;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AbsListView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -60,6 +57,7 @@ import com.raincat.dolby_beta.view.setting.UpdateView;
 import com.raincat.dolby_beta.view.setting.ListenView;
 import com.raincat.dolby_beta.view.setting.WarnView;
 
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -76,14 +74,15 @@ import static de.robv.android.xposed.XposedHelpers.findClassIfExists;
  * <pre>
  * author : RainCat (Modified by Assistant)
  * time   : 2019/10/26
- * desc   : 设置页通用原生内嵌适配器
- * version: 1.2
+ * desc   : 设置注入彻底修复版 - 依据 Smali 逆向分析的 ScrollView 提取法
+ * version: 1.3
  * </pre>
  */
 public class SettingHook {
     private String SettingActivity;
     private TextView titleView, subView;
     private LinearLayout dialogRoot, dialogProxyRoot, dialogBeautyRoot, dialogSidebarRoot;
+
     private BroadcastReceiver broadcastReceiver;
 
     public SettingHook(Context context, int versionCode) {
@@ -95,28 +94,27 @@ public class SettingHook {
 
         Class<?> settingActivityClass = findClassIfExists(SettingActivity, context.getClassLoader());
         if (settingActivityClass == null) {
-            XposedBridge.log("DolbyBeta: 未能匹配到设置页类名，跳过原生注入");
+            XposedBridge.log("DolbyBeta: 警告，未找到设置界面 Activity 类 " + SettingActivity);
             return;
         }
 
-        // 注册设置广播，保证各个子面板之间数据的顺畅刷新
+        // 注册控制台内部广播
         registerBroadcastReceiver(context.getApplicationContext() != null ? context.getApplicationContext() : context);
 
-        // Hook 核心：在 SettingActivity 执行完 onCreate 后进行控件容器渗透注入
         findAndHookMethod(settingActivityClass, "onCreate", Bundle.class, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 super.afterHookedMethod(param);
                 final Activity activity = (Activity) param.thisObject;
                 
-                // 延时 200 毫秒注入，等待网易云原生列表的各种异步数据加载完毕，保证拿到最完整的 ViewGroup 容器
-                activity.getWindow().getDecorView().postDelayed(() -> {
+                // 延迟执行注入，确保网易云的 setContentView 完全跑完，视图树已渲染
+                activity.getWindow().getDecorView().post(() -> {
                     try {
-                        injectSettingMenu(activity);
-                    } catch (Throwable e) {
-                        XposedBridge.log("DolbyBeta: 尝试原生内嵌设置出错: " + e.getMessage());
+                        injectSettingItemSmartly(activity);
+                    } catch (Throwable t) {
+                        XposedBridge.log("DolbyBeta: 智能注入设置入口异常: " + t.getMessage());
                     }
-                }, 200);
+                });
             }
         });
 
@@ -126,8 +124,8 @@ public class SettingHook {
                 super.beforeHookedMethod(param);
                 if (broadcastReceiver != null) {
                     try {
-                        Context context = (Context) param.thisObject;
-                        context.unregisterReceiver(broadcastReceiver);
+                        Context ctx = (Context) param.thisObject;
+                        ctx.unregisterReceiver(broadcastReceiver);
                     } catch (Exception ignored) {}
                 }
             }
@@ -135,116 +133,94 @@ public class SettingHook {
     }
 
     /**
-     * 强力自适应注入引擎：
-     * 不管新版网易云使用了 ListView、RecyclerView 还是普通的 ScrollView 嵌套，
-     * 直接层级遍历寻找列表容器，在它的末端平滑插入我们精心伪装的高级设置选项。
+     * 智能提取布局树注入法（专治各种 ConstraintLayout）
      */
-    private void injectSettingMenu(final Activity activity) {
-        ViewGroup root = activity.findViewById(android.R.id.content);
-        if (root == null) return;
+    private void injectSettingItemSmartly(final Activity activity) {
+        ScrollView targetScrollView = null;
 
-        // 防止界面刷新导致重复创建选项
-        if (root.findViewWithTag("dolby_beta_entry") != null) {
-            return;
+        // 1. 根据刚刚逆向的 Smali 代码，SettingActivity 必然有一个 ScrollView 类型的变量（字段名为 y）
+        // 我们通过反射直接把它抓出来！
+        for (Field field : activity.getClass().getDeclaredFields()) {
+            if (field.getType() == ScrollView.class) {
+                field.setAccessible(true);
+                try {
+                    targetScrollView = (ScrollView) field.get(activity);
+                    break;
+                } catch (IllegalAccessException ignored) {}
+            }
         }
 
-        // 寻找滑动容器
-        ViewGroup listContainer = findScrollContainer(root);
-        if (listContainer == null) {
-            // 兜底方案：如果实在没找到滑动列表，直接把 root（DecorView 根布局）作为容器
-            listContainer = root;
+        // 2. 如果反射由于某种原因没拿到，直接遍历布局树进行地毯式搜索
+        if (targetScrollView == null) {
+            targetScrollView = findScrollViewDeep(activity.findViewById(android.R.id.content));
         }
 
-        final Context context = activity;
-        
-        // 创建我们伪装的 Item 容器
-        LinearLayout customItem = new LinearLayout(context);
-        customItem.setTag("dolby_beta_entry");
-        customItem.setOrientation(LinearLayout.HORIZONTAL);
-        customItem.setGravity(Gravity.CENTER_VERTICAL);
-        
-        // 动态获取安卓标准可点击背景水波纹，让点击反馈与系统完美保持一致
-        TypedValue outValue = new TypedValue();
-        if (context.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)) {
-            customItem.setBackgroundResource(outValue.resourceId);
-        }
+        if (targetScrollView != null && targetScrollView.getChildCount() > 0) {
+            // ScrollView 里面必定有且仅有一个大容器（ViewGroup，通常是 LinearLayout），装着所有的设置项
+            ViewGroup container = (ViewGroup) targetScrollView.getChildAt(0);
 
-        // 伪装原生样式的 TextView
-        titleView = new TextView(context);
-        titleView.setText("杜比大喇叭β [高级设置]");
-        titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
-        titleView.setTextColor(0xFFD32F2F); // 网易红，高级且易于用户辨识
+            // 检查是否已经注入过，防止重复添加
+            if (container.findViewWithTag("dolby_setting_entry") != null) {
+                return;
+            }
 
-        subView = new TextView(context);
-        subView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 11);
-        subView.setPadding(Tools.dp2px(context, 8), 0, 0, 0);
-
-        customItem.addView(titleView);
-        customItem.addView(subView);
-        refresh();
-
-        // 智能提取：搜索周围原本存在的 TextView，提取它们的内边距和字体大小，力求视觉高度统一
-        TextView sampleText = findTextViewSample(listContainer);
-        int paddingLeft = Tools.dp2px(context, 16);
-        int paddingTop = Tools.dp2px(context, 14);
-        ColorStateList textColors = null;
-        
-        if (sampleText != null) {
-            paddingLeft = sampleText.getPaddingLeft() != 0 ? sampleText.getPaddingLeft() : paddingLeft;
-            paddingTop = sampleText.getPaddingTop() != 0 ? sampleText.getPaddingTop() : paddingTop;
-            textColors = sampleText.getTextColors();
-        }
-
-        customItem.setPadding(paddingLeft, paddingTop, paddingLeft, paddingTop);
-        if (textColors != null && titleView != null && subView != null) {
-            subView.setTextColor(textColors);
-        }
-
-        customItem.setOnClickListener(v -> showSettingDialog(activity));
-
-        // 智能挂载：如果网易云是 RecyclerView，我们将此 View 附加在最末尾
-        try {
-            ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            customItem.setLayoutParams(lp);
-            listContainer.addView(customItem);
-            XposedBridge.log("DolbyBeta: 成功原生嵌入网易云音乐设置菜单！");
-        } catch (Exception e) {
-            // 如果列表容器类型不允许直接 addView (如未重写的特定的 RecyclerView)，则添加到它的外层 LinearLayout 容器
-            try {
-                ViewGroup parent = (ViewGroup) listContainer.getParent();
-                if (parent != null) {
-                    parent.addView(customItem);
-                }
-            } catch (Exception ignored) {}
+            // 创建我们原生的“杜比大喇叭”设置 UI 菜单
+            View settingItem = createSettingItemView(activity);
+            
+            // 【核心降维打击】直接把它 addView 在第 0 个位置，也就是整个设置列表的「最顶端」！
+            // 由于它存在于 ScrollView 内的垂直布局中，它会自动推开其他元素，100% 完美显示！
+            container.addView(settingItem, 0);
+            
+            refresh();
+            XposedBridge.log("DolbyBeta: ScrollView 提取法注入设置项成功！");
+        } else {
+            XposedBridge.log("DolbyBeta: 致命错误，未能在 SettingActivity 中找到 ScrollView。");
         }
     }
 
     /**
-     * 深度优先遍历：寻找设置 Activity 内的滑动组件
+     * 构建一个仿原生的长条形列表点击项
      */
-    private ViewGroup findScrollContainer(ViewGroup root) {
-        if (root instanceof AbsListView || root instanceof ScrollView || root.getClass().getName().contains("RecyclerView")) {
-            return root;
+    private View createSettingItemView(final Activity activity) {
+        LinearLayout appendLayout = new LinearLayout(activity);
+        appendLayout.setTag("dolby_setting_entry"); // 打上 Tag 避免重复
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Tools.dp2px(activity, 55));
+        appendLayout.setLayoutParams(lp);
+        appendLayout.setOrientation(LinearLayout.HORIZONTAL);
+        appendLayout.setGravity(Gravity.CENTER_VERTICAL);
+        appendLayout.setPadding(Tools.dp2px(activity, 15), 0, Tools.dp2px(activity, 15), 0);
+        
+        // 点击波纹效果，使其看起来和官方原生按钮一样
+        TypedValue typedValue = new TypedValue();
+        if (activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, typedValue, true)) {
+            appendLayout.setBackgroundResource(typedValue.resourceId);
         }
-        for (int i = 0; i < root.getChildCount(); i++) {
-            View child = root.getChildAt(i);
-            if (child instanceof ViewGroup) {
-                ViewGroup res = findScrollContainer((ViewGroup) child);
-                if (res != null) return res;
-            }
-        }
-        return null;
+
+        titleView = new TextView(activity);
+        titleView.setText("杜比大喇叭β [高级设置入口]");
+        titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        titleView.setTextColor(0xFFE53935); // 红色高亮
+        titleView.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        subView = new TextView(activity);
+        subView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 11);
+        subView.setTextColor(0x8A000000);
+
+        appendLayout.addView(titleView);
+        appendLayout.addView(subView);
+        
+        // 点击弹出控制面板
+        appendLayout.setOnClickListener(view -> showSettingDialog(activity));
+        return appendLayout;
     }
 
-    private TextView findTextViewSample(ViewGroup root) {
-        for (int i = 0; i < root.getChildCount(); i++) {
-            View child = root.getChildAt(i);
-            if (child instanceof TextView) {
-                return (TextView) child;
-            } else if (child instanceof ViewGroup) {
-                TextView res = findTextViewSample((ViewGroup) child);
+    private ScrollView findScrollViewDeep(View view) {
+        if (view instanceof ScrollView) return (ScrollView) view;
+        if (view instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) view;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                ScrollView res = findScrollViewDeep(vg.getChildAt(i));
                 if (res != null) return res;
             }
         }
@@ -342,6 +318,7 @@ public class SettingHook {
         beautyView.setBaseOnView(masterView);
         ResetModuleView resetModuleView = new ResetModuleView(context);
 
+
         dialogRoot.addView(new TitleView(context));
         dialogRoot.addView(masterView);
         dialogRoot.addView(dexView);
@@ -382,6 +359,7 @@ public class SettingHook {
         ProxyConfigurationView proxyConfigurationView = new ProxyConfigurationView(context);
         proxyConfigurationView.setBaseOnView(proxyMasterView);
 
+
         dialogProxyRoot.addView(new ProxyTitleView(context));
         dialogProxyRoot.addView(proxyMasterView);
         dialogProxyRoot.addView(proxyCoverView);
@@ -397,7 +375,6 @@ public class SettingHook {
                 .setPositiveButton("仅保存", (dialogInterface, i) -> refresh())
                 .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context)).show();
     }
-
     private void showProxyConfigurationDialog(final Context context) {
         dialogProxyRoot = new BaseDialogItem(context);
         dialogProxyRoot.setOrientation(LinearLayout.VERTICAL);
@@ -417,7 +394,6 @@ public class SettingHook {
                 .setPositiveButton("仅保存", (dialogInterface, i) -> refresh())
                 .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context)).show();
     }
-
     private void showPlayerBackgroundDialog(final Context context) {
         dialogBeautyRoot = new BaseDialogItem(context);
         dialogBeautyRoot.setOrientation(LinearLayout.VERTICAL);
@@ -436,7 +412,6 @@ public class SettingHook {
                 .setPositiveButton("仅保存", (dialogInterface, i) -> refresh())
                 .setNegativeButton("保存并重启", (dialogInterface, i) -> restartApplication(context)).show();
     }
-
     private void showBeautyDialog(final Context context) {
         dialogBeautyRoot = new BaseDialogItem(context);
         dialogBeautyRoot.setOrientation(LinearLayout.VERTICAL);
