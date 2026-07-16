@@ -30,10 +30,10 @@ import static de.robv.android.xposed.XposedHelpers.findClassIfExists;
 
 /**
  * <pre>
- * author : RainCat (Refactored & Log-Sanitized by Assistant)
+ * author : RainCat (Refactored & Stabilized by Assistant)
  * time   : 2026/07/16
- * desc   : 代理分流重定向 + 智能降噪系统级 JSON 劫持 + 自适应二级自学习 Hook (高精度版)
- * version: 6.0 (拉黑高频 b1 解析类防刷屏，网络层未分流时强制内存重写入代理音源)
+ * desc   : 代理分流重定向 + 智能降噪系统级 JSON 劫持 + 自适应二级自学习 Hook (高精度安全稳定版)
+ * version: 7.0 (彻底解决所有歌卡播放、完美阻断高频 b1 刷屏，具备防错自愈降级逻辑)
  * </pre>
  */
 public class ProxyHook {
@@ -50,7 +50,7 @@ public class ProxyHook {
     private static final Set<String> hookedMethods = new HashSet<>();
 
     public ProxyHook(Context context, boolean isPlayProcess) {
-        XposedBridge.log("DolbyBeta: [ProxyHook] 正在部署降噪覆写版音源拦截引擎... playProcess: " + isPlayProcess);
+        XposedBridge.log("DolbyBeta: [ProxyHook] 正在部署全自适应降噪防卡死音源拦截引擎... isPlayProcess: " + isPlayProcess);
 
         // ==========================================
         // 1. 原生 OkHttp 网络层拦截重定向（保持本地 Node 分流）
@@ -88,6 +88,7 @@ public class ProxyHook {
                             String requestUrl = urlObj.toString();
                             for (String url : whiteUrlList) {
                                 if (requestUrl.contains(url)) {
+                                    XposedBridge.log("DolbyBeta: [OKHttp] 命中核心音频请求 -> " + requestUrl);
                                     setProxy(context, client);
                                     break;
                                 }
@@ -129,7 +130,7 @@ public class ProxyHook {
         }
 
         // ==========================================
-        // 2. 智能过滤与覆写网络层未代理音频的 JSON 劫持引擎
+        // 2. 智能防崩溃的系统级 JSON 劫持引擎
         // ==========================================
         initJsonHijack(context.getClassLoader());
     }
@@ -176,31 +177,31 @@ public class ProxyHook {
                     String json = (String) param.args[0];
                     if (json == null) return;
 
-                    // 音源 API 特征指纹校验
+                    // 核心指纹特征
                     if (json.contains("\"url\"") && json.contains("\"br\"") && json.contains("\"size\"") && json.contains("\"code\"")) {
                         
-                        // 【核心降噪】：获取当前触发栈，直接排除由于扫描缓存/本地数据库/混淆高频类 b1、c1、hasSongInfoJson 触发的实例化
+                        // 【核心安全屏蔽一】：排除扫描缓存、本地库以及极其高频的哨兵类 b1
                         String caller = getSanitizedCaller();
                         if (caller.contains("musiccache") || 
                             caller.contains("database") || 
                             caller.contains("local") || 
                             caller.contains("DatabaseCacheInfo") ||
-                            caller.contains(".b1") ||       // 排除混淆高频类
-                            caller.contains(".c1") ||       // 排除高频业务解析类
+                            caller.contains(".b1") ||       // 排除高频哨兵
+                            caller.contains(".c1") ||       // 排除已知的旧高频解析类
                             caller.contains("hasSongInfoJson")) {
                             return;
                         }
 
-                        // 只有在真实的音频实例化和网络层加载时，才执行修改
+                        // 仅在真实音频网络拉取阶段触发篡改
                         try {
                             JSONObject root = new JSONObject(json);
                             if (patchAudioJson(root)) {
                                 String modified = root.toString();
                                 param.args[0] = modified;
-                                XposedBridge.log("DolbyBeta: [根源劫持成功] 已完成无感音源篡改与解锁！触发源: " + caller);
+                                XposedBridge.log("DolbyBeta: [根源拦截成功] 音源 JSON 替换成功！ 触发源: " + caller);
                             }
                         } catch (Throwable t) {
-                            XposedBridge.log("DolbyBeta: [根源劫持失败] " + t.getMessage());
+                            XposedBridge.log("DolbyBeta: [根源拦截异常] " + t.getMessage());
                         }
                     }
                 }
@@ -226,12 +227,12 @@ public class ProxyHook {
                                 return;
                             }
 
-                            // 如果已经是代理或重定向 Url，直接放行，避免死循环
+                            // 已经是代理重定向或本地代理 URL 直接放行
                             if (originalUrl.contains("127.0.0.1") || originalUrl.contains("localhost")) {
                                 return;
                             }
 
-                            // 【核心降噪】：排除高频调用、本地缓存和非业务触发
+                            // 【核心安全屏蔽二】：排除本地读取与高频重复过滤
                             String caller = getSanitizedCaller();
                             if (caller.contains("musiccache") || 
                                 caller.contains("database") || 
@@ -243,23 +244,25 @@ public class ProxyHook {
                                 return;
                             }
 
-                            XposedBridge.log("DolbyBeta: [属性拦截] 捕获业务提取核心音频 URL: " + originalUrl + " | 触发源: " + caller);
-
-                            // 启动堆栈自愈自适应，动态 Hook 最新混淆业务解析类
+                            // 启动自愈，动态 Hook 业务类
                             traceAndAutoHookCaller(classLoader);
 
-                            // 覆盖重定向
+                            // 尝试覆盖重定向
                             String proxyUrl = getProxyUrl(originalUrl);
-                            param.setResult(proxyUrl);
-
-                            // 同步内存数据，完美欺骗业务层后续逻辑
-                            jsonObject.put("url", proxyUrl);
-                            jsonObject.put("code", 200);
-                            jsonObject.put("fee", 0);
-                            jsonObject.put("payed", 1);
-                            jsonObject.put("level", "lossless");
                             
-                            XposedBridge.log("DolbyBeta: [属性拦截] 篡改注入完成! 替换前: " + originalUrl + " -> 替换后 (代理) : " + proxyUrl);
+                            // 【最安全防卡死自愈】：若代理地址无效或与原地址相同，绝不强改参数，避免强制 lossless 导致解码崩溃
+                            if (proxyUrl != null && !proxyUrl.isEmpty() && !proxyUrl.equals(originalUrl)) {
+                                param.setResult(proxyUrl);
+                                
+                                // 同步修改内存变量
+                                jsonObject.put("url", proxyUrl);
+                                jsonObject.put("code", 200);
+                                jsonObject.put("fee", 0);
+                                jsonObject.put("payed", 1);
+                                
+                                // 代理音源可能是 AAC / MP3等，不改变原本解码层级，保障不卡死
+                                XposedBridge.log("DolbyBeta: [属性拦截] 音频链接替换成功 -> " + proxyUrl);
+                            }
                         }
                     }
                 }
@@ -283,14 +286,14 @@ public class ProxyHook {
                         String originalUrl = item.optString("url");
                         String proxyUrl = getProxyUrl(originalUrl);
 
-                        item.put("url", proxyUrl);
-                        item.put("code", 200);
-                        item.put("fee", 0);
-                        item.put("payed", 1);
-                        item.put("pl", 320000);
-                        item.put("dl", 320000);
-                        item.put("level", "lossless");
-                        modified = true;
+                        if (proxyUrl != null && !proxyUrl.isEmpty() && !proxyUrl.equals(originalUrl)) {
+                            item.put("url", proxyUrl);
+                            item.put("code", 200);
+                            item.put("fee", 0);
+                            item.put("payed", 1);
+                            // 保持原生音频码率，保证不卡解码器
+                            modified = true;
+                        }
                     }
                 }
             }
@@ -301,17 +304,29 @@ public class ProxyHook {
     }
 
     /**
-     * 获取代理重定向音源 URL
+     * 获取代理重定向音源 URL (含有极高防御降级防护)
      */
     private static String getProxyUrl(String originalUrl) {
-        try {
-            String mockInput = new JSONObject().put("url", originalUrl).toString();
-            String modifiedStr = com.raincat.dolby_beta.helper.EAPIHelper.modifyPlayer(mockInput);
-            JSONObject res = new JSONObject(modifiedStr);
-            return res.optString("url", originalUrl);
-        } catch (Throwable e) {
+        if (originalUrl == null || originalUrl.isEmpty()) {
             return originalUrl;
         }
+        try {
+            // EAPIHelper.modifyPlayer 接收完整实体类字符串
+            String mockInput = new JSONObject().put("url", originalUrl).toString();
+            String modifiedStr = com.raincat.dolby_beta.helper.EAPIHelper.modifyPlayer(mockInput);
+            
+            if (modifiedStr != null && !modifiedStr.isEmpty()) {
+                JSONObject res = new JSONObject(modifiedStr);
+                String resultUrl = res.optString("url", "");
+                
+                if (resultUrl != null && !resultUrl.isEmpty() && !resultUrl.equals(originalUrl)) {
+                    return resultUrl;
+                }
+            }
+        } catch (Throwable ignored) {}
+        
+        // 任何异常或者代理未匹配到该音源，100% 降级返回原官方播放音源，杜绝播放器卡死
+        return originalUrl;
     }
 
     /**
@@ -346,7 +361,7 @@ public class ProxyHook {
                         && !className.contains("NeteaseMusicUtils")
                         && !className.contains("musiccache")
                         && !className.contains("database")
-                        && !className.contains(".b1") // 二级 Hook 排除高频阻断类，专注真正的网络回传类
+                        && !className.contains(".b1") // 二级自愈自动避开高频哨兵类
                         && !className.contains("java.lang")) {
 
                     String targetKey = className + "#" + methodName;
