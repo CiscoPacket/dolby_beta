@@ -30,10 +30,10 @@ import static de.robv.android.xposed.XposedHelpers.findClassIfExists;
 
 /**
  * <pre>
- * author : RainCat (Refactored & Denoised by Assistant)
+ * author : RainCat (Refactored & Log-Sanitized by Assistant)
  * time   : 2026/07/16
- * desc   : 代理分流重定向 + 智能降噪系统级 JSON 劫持 + 自适应二级自学习 Hook
- * version: 5.0 (过滤本地数据库扫描干扰，专治音源替换失效与刷屏)
+ * desc   : 代理分流重定向 + 智能降噪系统级 JSON 劫持 + 自适应二级自学习 Hook (高精度版)
+ * version: 6.0 (拉黑高频 b1 解析类防刷屏，网络层未分流时强制内存重写入代理音源)
  * </pre>
  */
 public class ProxyHook {
@@ -50,7 +50,7 @@ public class ProxyHook {
     private static final Set<String> hookedMethods = new HashSet<>();
 
     public ProxyHook(Context context, boolean isPlayProcess) {
-        XposedBridge.log("DolbyBeta: [Denoise] [ProxyHook] 正在部署降噪版音源拦截引擎... isPlayProcess: " + isPlayProcess);
+        XposedBridge.log("DolbyBeta: [ProxyHook] 正在部署降噪覆写版音源拦截引擎... playProcess: " + isPlayProcess);
 
         // ==========================================
         // 1. 原生 OkHttp 网络层拦截重定向（保持本地 Node 分流）
@@ -88,7 +88,6 @@ public class ProxyHook {
                             String requestUrl = urlObj.toString();
                             for (String url : whiteUrlList) {
                                 if (requestUrl.contains(url)) {
-                                    XposedBridge.log("DolbyBeta: [Denoise] [OKHttp] 命中核心音源请求 -> " + requestUrl);
                                     setProxy(context, client);
                                     break;
                                 }
@@ -130,7 +129,7 @@ public class ProxyHook {
         }
 
         // ==========================================
-        // 2. 智能过滤的系统级 JSON 劫持引擎
+        // 2. 智能过滤与覆写网络层未代理音频的 JSON 劫持引擎
         // ==========================================
         initJsonHijack(context.getClassLoader());
     }
@@ -177,34 +176,37 @@ public class ProxyHook {
                     String json = (String) param.args[0];
                     if (json == null) return;
 
-                    // 核心指纹过滤
+                    // 音源 API 特征指纹校验
                     if (json.contains("\"url\"") && json.contains("\"br\"") && json.contains("\"size\"") && json.contains("\"code\"")) {
                         
-                        // 【核心智能降噪一】：获取当前触发栈，直接排除由于扫描缓存/本地数据库触发的实例化
+                        // 【核心降噪】：获取当前触发栈，直接排除由于扫描缓存/本地数据库/混淆高频类 b1、c1、hasSongInfoJson 触发的实例化
                         String caller = getSanitizedCaller();
-                        if (caller.contains("musiccache") || caller.contains("database") || caller.contains("local") || caller.contains("DatabaseCacheInfo")) {
-                            // 属于本地数据库检查逻辑，直接忽略，既不处理也不打印日志，彻底杜绝刷屏！
+                        if (caller.contains("musiccache") || 
+                            caller.contains("database") || 
+                            caller.contains("local") || 
+                            caller.contains("DatabaseCacheInfo") ||
+                            caller.contains(".b1") ||       // 排除混淆高频类
+                            caller.contains(".c1") ||       // 排除高频业务解析类
+                            caller.contains("hasSongInfoJson")) {
                             return;
                         }
 
-                        XposedBridge.log("DolbyBeta: [Denoise] [根源拦截] 成功拦截核心实时网络音频 JSON! 触发源: " + caller);
-                        XposedBridge.log("DolbyBeta: [Denoise] [根源拦截] 原始网络数据: " + json);
-
+                        // 只有在真实的音频实例化和网络层加载时，才执行修改
                         try {
                             JSONObject root = new JSONObject(json);
                             if (patchAudioJson(root)) {
                                 String modified = root.toString();
                                 param.args[0] = modified;
-                                XposedBridge.log("DolbyBeta: [Denoise] [根源拦截] 已完成无感音源篡改与解锁！覆写数据: " + modified);
+                                XposedBridge.log("DolbyBeta: [根源劫持成功] 已完成无感音源篡改与解锁！触发源: " + caller);
                             }
                         } catch (Throwable t) {
-                            XposedBridge.log("DolbyBeta: [Denoise] [根源拦截] 覆写出现异常: " + t.getMessage());
+                            XposedBridge.log("DolbyBeta: [根源劫持失败] " + t.getMessage());
                         }
                     }
                 }
             });
         } catch (Throwable t) {
-            XposedBridge.log("DolbyBeta: [Denoise] JSONObject 构造方法 Hook 失败: " + t.getMessage());
+            XposedBridge.log("DolbyBeta: JSONObject 构造方法 Hook 失败: " + t.getMessage());
         }
 
         // [维度 B]：系统属性 optString 劫持与动态反混淆
@@ -219,20 +221,31 @@ public class ProxyHook {
                         if (jsonObject.has("br") && jsonObject.has("size") && jsonObject.has("code")) {
                             String originalUrl = (String) param.getResult();
 
-                            // 排除空值和非官方音源
-                            if (originalUrl == null || originalUrl.isEmpty() || !originalUrl.contains("music.126.net")) {
+                            // 排除空值
+                            if (originalUrl == null || originalUrl.isEmpty()) {
                                 return;
                             }
 
-                            // 【核心智能降噪二】：排除由于本地缓存提取调用的 url 读取
+                            // 如果已经是代理或重定向 Url，直接放行，避免死循环
+                            if (originalUrl.contains("127.0.0.1") || originalUrl.contains("localhost")) {
+                                return;
+                            }
+
+                            // 【核心降噪】：排除高频调用、本地缓存和非业务触发
                             String caller = getSanitizedCaller();
-                            if (caller.contains("musiccache") || caller.contains("database") || caller.contains("local") || caller.contains("DatabaseCacheInfo")) {
+                            if (caller.contains("musiccache") || 
+                                caller.contains("database") || 
+                                caller.contains("local") || 
+                                caller.contains("DatabaseCacheInfo") ||
+                                caller.contains(".b1") || 
+                                caller.contains(".c1") ||
+                                caller.contains("hasSongInfoJson")) {
                                 return;
                             }
 
-                            XposedBridge.log("DolbyBeta: [Denoise] [属性拦截] 捕获业务提取核心音频 URL: " + originalUrl + " | 触发源: " + caller);
+                            XposedBridge.log("DolbyBeta: [属性拦截] 捕获业务提取核心音频 URL: " + originalUrl + " | 触发源: " + caller);
 
-                            // 启动堆栈溯源自愈，动态 Hook 最新混淆业务解析类
+                            // 启动堆栈自愈自适应，动态 Hook 最新混淆业务解析类
                             traceAndAutoHookCaller(classLoader);
 
                             // 覆盖重定向
@@ -246,13 +259,13 @@ public class ProxyHook {
                             jsonObject.put("payed", 1);
                             jsonObject.put("level", "lossless");
                             
-                            XposedBridge.log("DolbyBeta: [Denoise] [属性拦截] 篡改注入完成! 替换为: " + proxyUrl);
+                            XposedBridge.log("DolbyBeta: [属性拦截] 篡改注入完成! 替换前: " + originalUrl + " -> 替换后 (代理) : " + proxyUrl);
                         }
                     }
                 }
             });
         } catch (Throwable t) {
-            XposedBridge.log("DolbyBeta: [Denoise] JSONObject.optString Hook 失败: " + t.getMessage());
+            XposedBridge.log("DolbyBeta: JSONObject.optString Hook 失败: " + t.getMessage());
         }
     }
 
@@ -318,7 +331,7 @@ public class ProxyHook {
     }
 
     /**
-     * 动态溯源学习当前版网易云的混淆类，并在内存中完成自适应 Hook 补刀
+     * 动态补刀二级自愈 Hook
      */
     private static void traceAndAutoHookCaller(ClassLoader classLoader) {
         try {
@@ -331,8 +344,9 @@ public class ProxyHook {
                         && !className.contains("dolby_beta")
                         && !className.contains("JSONObject")
                         && !className.contains("NeteaseMusicUtils")
-                        && !className.contains("musiccache")  // 动态 Hook 阶段也避开缓存类的干扰，只锁死核心网络交互解析类！
+                        && !className.contains("musiccache")
                         && !className.contains("database")
+                        && !className.contains(".b1") // 二级 Hook 排除高频阻断类，专注真正的网络回传类
                         && !className.contains("java.lang")) {
 
                     String targetKey = className + "#" + methodName;
@@ -353,7 +367,7 @@ public class ProxyHook {
                                             XposedHelpers.findAndHookMethod(targetClazz, methodName, JSONObject.class, new XC_MethodHook() {
                                                 @Override
                                                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                                                    XposedBridge.log("DolbyBeta: [自适应补刀命中] 完美覆盖新混淆函数: " + targetKey);
+                                                    XposedBridge.log("DolbyBeta: [自适应补刀成功触发] 完美覆盖新混淆函数: " + targetKey);
                                                     JSONObject jsonObject = (JSONObject) param.args[0];
                                                     if (jsonObject != null) {
                                                         patchAudioJson(jsonObject);
