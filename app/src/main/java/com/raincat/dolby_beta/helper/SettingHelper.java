@@ -96,6 +96,11 @@ public class SettingHelper {
     public static final String proxy_flac_title = "无损音质优先";
     public static final String proxy_flac_sub = "使用外部音源时优先获取无损音质，但并不是100%能获取到无损音质";
 
+    public static final String local_vip_key = "β_local_vip_key";
+    public static final String local_vip_title = "脚本本地VIP";
+    public static final String local_vip_sub = "UnblockNeteaseMusic 的 ENABLE_LOCAL_VIP，与「本地黑胶」不同。可选关闭 / CVIP / SVIP";
+    public static final String local_vip_default = "";
+
     public static final String proxy_gray_key = "β_proxy_gray_key";
     public static final String proxy_gray_title = "不变灰";
     public static final String proxy_gray_sub = "只影响显示效果，与能否播放无关，会导致无音源歌曲无法播放且无法自动跳过";
@@ -221,21 +226,20 @@ public class SettingHelper {
         settingMap.put(beauty_black_hide_key, sharedPreferences.getBoolean(beauty_black_hide_key, false));
         settingMap.put(beauty_comment_hot_key, sharedPreferences.getBoolean(beauty_comment_hot_key, false));
         settingMap.put(beauty_background_key, sharedPreferences.getBoolean(beauty_background_key, false));
-
-
     }
 
-    public void  setSetting(String key, boolean value) {
+    public void setSetting(String key, boolean value) {
         settingMap.put(key, value);
         sharedPreferences.edit().putBoolean(key, value).apply();
     }
 
     public boolean getSetting(String key) {
-        return settingMap.get(key);
+        Boolean value = settingMap.get(key);
+        return value != null && value;
     }
 
     public boolean isEnable(String key) {
-        return settingMap.get(master_key) && settingMap.get(key);
+        return getSetting(master_key) && getSetting(key);
     }
 
     private void deleteSetting(String key) {
@@ -258,6 +262,7 @@ public class SettingHelper {
         deleteSetting(proxy_server_key);
         deleteSetting(proxy_priority_key);
         deleteSetting(proxy_flac_key);
+        deleteSetting(local_vip_key);
         deleteSetting(proxy_gray_key);
         deleteSetting(beauty_night_mode_key);
         deleteSetting(beauty_tab_hide_key);
@@ -338,6 +343,21 @@ public class SettingHelper {
     public String getHttpProxy() {
         return sharedPreferences.getString(SettingHelper.http_proxy_key, SettingHelper.http_proxy_default);
     }
+    public String getLocalVip() {
+        String value = sharedPreferences.getString(SettingHelper.local_vip_key, SettingHelper.local_vip_default);
+        return value == null ? "" : value.trim();
+    }
+
+    public void setLocalVip(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase();
+        if ("true".equals(normalized)) {
+            normalized = "cvip";
+        } else if ("false".equals(normalized) || "off".equals(normalized) || "0".equals(normalized)) {
+            normalized = "";
+        }
+        sharedPreferences.edit().putString(SettingHelper.local_vip_key, normalized).apply();
+    }
+
     public String getKuwoCookie() {
         return sharedPreferences.getString(SettingHelper.kuwo_cookie_key, SettingHelper.kuwo_cookie_default);
     }

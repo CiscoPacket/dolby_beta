@@ -3,6 +3,8 @@ package com.raincat.dolby_beta.view;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -130,6 +132,8 @@ public class BaseDialogItem extends LinearLayout {
     }
 
     protected void sendBroadcast(String action) {
-        context.sendBroadcast(new Intent(action));
+        Intent intent = new Intent(action);
+        LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+        context.sendBroadcast(intent);
     }
 }

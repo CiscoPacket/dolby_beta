@@ -108,7 +108,6 @@ public class Hook {
                             new InternalDialogHook(context, versionCode);
                             //修复登录失败
                             new LoginFixHook(context);
-//                            new TestHook(context);
                             ClassHelper.getCacheClassList(context, versionCode, () -> {
                                 //获取账号信息
                                 new UserProfileHook(context);

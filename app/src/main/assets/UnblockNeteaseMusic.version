@@ -1,0 +1,7 @@
+﻿UnblockNeteaseMusic/server
+branch: enhanced
+version: 0.28.0
+commit: c29ff1bfaf138afe3c41ee1be43daa91097afc9f
+date: 2026-08-11T14:40:54+08:00
+message: build(deps): bump fast-uri from 3.1.4 to 3.1.5
+url: https://github.com/UnblockNeteaseMusic/server/commit/c29ff1bfaf138afe3c41ee1be43daa91097afc9f

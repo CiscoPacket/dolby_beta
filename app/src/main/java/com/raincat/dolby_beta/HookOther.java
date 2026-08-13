@@ -97,7 +97,6 @@ public class HookOther {
                             new MagiskFixHook(context);
                             //去掉内测与听歌识曲弹窗
                             new InternalDialogHook(context, versionCode);
-//                            new TestHook(context);
                             ClassHelper.getCacheClassList(context, versionCode, () -> {
                                 //获取账号信息
                                 new UserProfileHook(context);

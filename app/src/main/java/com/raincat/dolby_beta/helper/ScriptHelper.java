@@ -90,9 +90,13 @@ public class ScriptHelper {
     }
 
     public static void startScript() {
-        String script = String.format("export ENABLE_FLAC=%s&&export MIN_BR=%s&&export QQ_COOKIE=\"%s\"&&export MIGU_COOKIE=\"%s\"&&libnode.so app.js -a 127.0.0.1 -o %s -p %s",
+        String localVip = SettingHelper.getInstance().getLocalVip();
+        String localVipExport = TextUtils.isEmpty(localVip) ? "" : "&&export ENABLE_LOCAL_VIP=" + localVip;
+        String script = String.format("export ENABLE_FLAC=%s&&export MIN_BR=%s%s&&export QQ_COOKIE=\"%s\"&&export MIGU_COOKIE=\"%s\"&&export KUWO_COOKIE=\"%s\"&&libnode.so app.js -a 127.0.0.1 -o %s -p %s",
                 SettingHelper.getInstance().getSetting(SettingHelper.proxy_flac_key), SettingHelper.getInstance().getSetting(SettingHelper.proxy_priority_key) ? "256000" : "96000",
-                SettingHelper.getInstance().getQqCookie(),SettingHelper.getInstance().getMiguCookie(),SettingHelper.getInstance().getProxyOriginal(), SettingHelper.getInstance().getProxyPort() + ":" + (SettingHelper.getInstance().getProxyPort() + 1));
+                localVipExport,
+                SettingHelper.getInstance().getQqCookie(), SettingHelper.getInstance().getMiguCookie(), SettingHelper.getInstance().getKuwoCookie(),
+                SettingHelper.getInstance().getProxyOriginal(), SettingHelper.getInstance().getProxyPort() + ":" + (SettingHelper.getInstance().getProxyPort() + 1));
 
         String[] START_PROXY = new String[]{"node=$(ps -ef |grep \"libnode.so app.js\" |grep -v grep)",
                 "if [ ! \"$node\" ]; then",

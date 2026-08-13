@@ -3,7 +3,6 @@ package com.raincat.dolby_beta.view.proxy.configuration;
 import android.content.Context;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.text.method.DigitsKeyListener;
 import android.util.AttributeSet;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.view.BaseDialogInputItem;
@@ -35,7 +34,6 @@ public class ProxyQqView extends BaseDialogInputItem {
     public void init(Context context, AttributeSet attrs) {
         super.init(context, attrs);
         title = SettingHelper.qq_cookie_title;
-       // editView.setKeyListener(DigitsKeyListener.getInstance("0123456789_.qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM; "));
         setData(SettingHelper.getInstance().getQqCookie(), SettingHelper.qq_cookie_default);
 
         defaultView.setOnClickListener(view -> {

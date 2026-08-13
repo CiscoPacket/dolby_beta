@@ -5,7 +5,6 @@ import android.util.AttributeSet;
 
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.view.BaseDialogItem;
-import com.raincat.dolby_beta.view.BaseDialogTextItem;
 
 /**
  * <pre>

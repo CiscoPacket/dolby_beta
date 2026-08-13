@@ -34,7 +34,6 @@ public class ProxyMiguView extends BaseDialogInputItem {
     public void init(Context context, AttributeSet attrs) {
         super.init(context, attrs);
         title = SettingHelper.migu_cookie_title;
-       // editView.setKeyListener(DigitsKeyListener.getInstance("0123456789_.qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM; "));
         setData(SettingHelper.getInstance().getMiguCookie(), SettingHelper.migu_cookie_default);
 
         defaultView.setOnClickListener(view -> {

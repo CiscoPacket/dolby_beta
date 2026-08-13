@@ -26,8 +26,14 @@ jobs:
           java-version: 1.8
 
       - name: Sync latest Unblocked Music source code
-        run:
-          git clone --depth=1 https://github.com/luoxingran/server.git && cd server && zip -r ../UnblockNeteaseMusic.zip . && cd .. && rm ./app/src/main/assets/UnblockNeteaseMusic.zip && rm -rf server && mv ./UnblockNeteaseMusic.zip ./app/src/main/assets/UnblockNeteaseMusic.zip
+        run: |
+          git clone --depth=1 --branch enhanced https://github.com/UnblockNeteaseMusic/server.git
+          cd server
+          git archive --format=zip HEAD -o ../UnblockNeteaseMusic.zip
+          cd ..
+          rm -f ./app/src/main/assets/UnblockNeteaseMusic.zip
+          mv ./UnblockNeteaseMusic.zip ./app/src/main/assets/UnblockNeteaseMusic.zip
+          rm -rf server
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew

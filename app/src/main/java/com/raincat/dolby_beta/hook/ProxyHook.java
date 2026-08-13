@@ -89,20 +89,6 @@ public class ProxyHook {
                     super.beforeHookedMethod(param);
                     if (param.args[0].getClass().getName().contains("com.netease.cloudmusic.network.cronet"))
                         param.setResult(param.thisObject);
-//                        XposedBridge.hookAllMethods(param.args[0].getClass(), "intercept", new XC_MethodHook() {
-//                            @Override
-//                            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-//                                super.beforeHookedMethod(param);
-//                                Object object = param.args[0];
-//                                if (object != null && object.getClass().getName().contains("Chain")) {
-//                                    Object request = XposedHelpers.callMethod(object, "request");
-//                                    if (request.toString().contains("song/enhance/player/url") || request.toString().contains("song/enhance/download/url")) {
-//                                        Object response = XposedHelpers.callMethod(object, "proceed", request);
-//                                        param.setResult(response);
-//                                    }
-//                                }
-//                            }
-//                        });
                 }
             });
         }
