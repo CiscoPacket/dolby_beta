@@ -5,23 +5,25 @@
 
 网易云音乐音源代理模块。工作原理为**音源替换而非破解**，单曲付费与无版权歌曲有几率匹配错误，真心支持歌手请付费。
 
-网易云音乐音源代理模块。工作原理为**音源替换而非破解**，单曲付费与无版权歌曲有几率匹配错误，真心支持歌手请付费。
-
-网易云音乐音源代理模块。工作原理为**音源替换而非破解**，单曲付费与无版权歌曲有几率匹配错误，真心支持歌手请付费。
-
 当前版本 **4.1.0**（fork 自 [luoxingran/dolby_beta](https://github.com/luoxingran/dolby_beta)，原作 [nining377/dolby_beta](https://github.com/nining377/dolby_beta)）。
 
-<img src="image/setting_rn.png" width="45%"> <img src="image/proxy_settings.png" width="45%">
+安装后请在 LSPosed 勾选网易云，并**强制停止**后再打开。设置入口在网易云「设置」页。脚本异常时可在模块里使用「重新释放脚本」。已在网易云 **9.5.70** 验证。
+
+<img src="image/setting_rn.png" width="30%"> <img src="image/proxy_settings.png" width="30%"> <img src="image/about_ncm.png" width="30%">
 
 ## 4.1.0 更新
 
+- 网易云 9.5+ RN 设置页可进入模块设置（「账号与安全」与「播放与下载」之间独立卡片，跟随「通用 → 显示 → 深色模式」）
+- 音源代理增加 UnblockNeteaseMusic `ENABLE_LOCAL_VIP`（脚本本地 VIP，与模块「本地黑胶」不同）
 - 内嵌 [UnblockNeteaseMusic/server](https://github.com/UnblockNeteaseMusic/server) `enhanced` 最新脚本（v0.28.0）
 
 [下载 Release](https://github.com/NikolaJyun/dolby_beta/releases/latest)
 
 ## 打赏
 
-<img width="1260" height="1890" alt="image" src="https://github.com/user-attachments/assets/3d6fbff6-af7f-4a49-9e27-7f58b5575b7d" /> <img width="1440" height="1928" alt="image" src="https://github.com/user-attachments/assets/2e0fd651-e78c-4d1f-b3f5-ec85aa9018cf" />
+如果这个模块对你有帮助，欢迎打赏支持。
+
+<img src="image/donate_wechat.png" width="40%"> <img src="image/donate_alipay.png" width="40%">
 
 ## 致谢
 
