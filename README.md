@@ -4,7 +4,9 @@
 [![License](https://img.shields.io/github/license/NikolaJyun/dolby_beta?label=License)](https://choosealicense.com/licenses/mit/)
 
 网易云音乐音源代理模块。工作原理为**音源替换而非破解**，单曲付费与无版权歌曲有几率匹配错误，真心支持歌手请付费。
+
 网易云音乐音源代理模块。工作原理为**音源替换而非破解**，单曲付费与无版权歌曲有几率匹配错误，真心支持歌手请付费。
+
 网易云音乐音源代理模块。工作原理为**音源替换而非破解**，单曲付费与无版权歌曲有几率匹配错误，真心支持歌手请付费。
 
 当前版本 **4.1.0**（fork 自 [luoxingran/dolby_beta](https://github.com/luoxingran/dolby_beta)，原作 [nining377/dolby_beta](https://github.com/nining377/dolby_beta)）。
