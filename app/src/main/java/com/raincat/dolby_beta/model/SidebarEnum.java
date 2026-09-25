@@ -47,6 +47,9 @@ public class SidebarEnum {
     }
 
     public static LinkedHashMap<String, String> getSidebarEnum() {
+        if (sidebarMap == null) {
+            return new LinkedHashMap<>(enumMap);
+        }
         return sidebarMap;
     }
 
