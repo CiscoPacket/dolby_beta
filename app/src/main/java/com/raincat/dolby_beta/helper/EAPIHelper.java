@@ -62,7 +62,10 @@ public class EAPIHelper {
                         if (url != null && !url.isEmpty()) {
                             item.put("code", 200);
                             if (url.contains("126.net") && url.contains("?")) {
-                                item.put("url", url.substring(0, url.indexOf("?")));
+                                String query = url.substring(url.indexOf("?") + 1).toLowerCase();
+                                if (!query.contains("wssecret") && !query.contains("token") && !query.contains("sign") && !query.contains("auth")) {
+                                    item.put("url", url.substring(0, url.indexOf("?")));
+                                }
                             }
                         }
                     }
