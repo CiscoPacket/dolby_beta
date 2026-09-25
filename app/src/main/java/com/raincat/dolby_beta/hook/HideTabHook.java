@@ -62,29 +62,35 @@ public class HideTabHook {
         if (versionCode >= 8000010) {
             Class<?> bottomTabViewClass = ClassHelper.BottomTabView.getClazz(context);
             if (bottomTabViewClass != null) {
-                findAndHookMethod(bottomTabViewClass, ClassHelper.BottomTabView.getTabInitMethod(context).getName(), new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                        super.afterHookedMethod(param);
-                        List<String> list = new ArrayList<>();
-                        list.add("mine");
-                        list.add("main");
-                        list.add("follow");
-                        param.setResult(list);
-                    }
-                });
+                Method initM = ClassHelper.BottomTabView.getTabInitMethod(context);
+                if (initM != null) {
+                    findAndHookMethod(bottomTabViewClass, initM.getName(), new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            super.afterHookedMethod(param);
+                            List<String> list = new ArrayList<>();
+                            list.add("mine");
+                            list.add("main");
+                            list.add("follow");
+                            param.setResult(list);
+                        }
+                    });
+                }
 
-                findAndHookMethod(bottomTabViewClass, ClassHelper.BottomTabView.getTabRefreshMethod(context).getName(), List.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        super.beforeHookedMethod(param);
-                        List<String> list = new ArrayList<>();
-                        list.add("mine");
-                        list.add("main");
-                        list.add("follow");
-                        param.args[0] = list;
-                    }
-                });
+                Method refreshM = ClassHelper.BottomTabView.getTabRefreshMethod(context);
+                if (refreshM != null) {
+                    findAndHookMethod(bottomTabViewClass, refreshM.getName(), List.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            super.beforeHookedMethod(param);
+                            List<String> list = new ArrayList<>();
+                            list.add("mine");
+                            list.add("main");
+                            list.add("follow");
+                            param.args[0] = list;
+                        }
+                    });
+                }
             }
         }
     }
