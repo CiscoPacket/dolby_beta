@@ -42,11 +42,22 @@ public class UserPrivilegeBean {
     public static class DataBean {
         private AssociatorBean associator;
         private MusicPackageBean musicPackage;
+        private RedPlusBean redplus;
         private long now;
         private boolean oldCacheProtocol;
         private int redVipAnnualCount;
         private int redVipLevel;
         private long userId;
+
+        public RedPlusBean getRedplus() {
+            if (redplus == null)
+                redplus = new RedPlusBean();
+            return redplus;
+        }
+
+        public void setRedplus(RedPlusBean redplus) {
+            this.redplus = redplus;
+        }
 
         public AssociatorBean getAssociator() {
             if (associator == null)
@@ -219,6 +230,72 @@ public class UserPrivilegeBean {
 
             public void setVipCode(int vipCode) {
                 this.vipCode = vipCode;
+            }
+        }
+
+        public static class RedPlusBean {
+            private long expireTime = 0;
+            private boolean isSign = true;
+            private boolean isSignDeduct = false;
+            private boolean isSignIap = false;
+            private boolean isSignIapDeduct = false;
+            private int vipCode = 100;
+            private int vipLevel = 9;
+
+            public long getExpireTime() {
+                return expireTime;
+            }
+
+            public void setExpireTime(long expireTime) {
+                this.expireTime = expireTime;
+            }
+
+            public boolean isIsSign() {
+                return isSign;
+            }
+
+            public void setIsSign(boolean isSign) {
+                this.isSign = isSign;
+            }
+
+            public boolean isIsSignDeduct() {
+                return isSignDeduct;
+            }
+
+            public void setIsSignDeduct(boolean isSignDeduct) {
+                this.isSignDeduct = isSignDeduct;
+            }
+
+            public boolean isIsSignIap() {
+                return isSignIap;
+            }
+
+            public void setIsSignIap(boolean isSignIap) {
+                this.isSignIap = isSignIap;
+            }
+
+            public boolean isIsSignIapDeduct() {
+                return isSignIapDeduct;
+            }
+
+            public void setIsSignIapDeduct(boolean isSignIapDeduct) {
+                this.isSignIapDeduct = isSignIapDeduct;
+            }
+
+            public int getVipCode() {
+                return vipCode;
+            }
+
+            public void setVipCode(int vipCode) {
+                this.vipCode = vipCode;
+            }
+
+            public int getVipLevel() {
+                return vipLevel;
+            }
+
+            public void setVipLevel(int vipLevel) {
+                this.vipLevel = vipLevel;
             }
         }
     }

@@ -74,11 +74,11 @@ public class EAPIHook {
                     original = EAPIHelper.modifyManipulate(ClassHelper.HttpParams.getParams(context, eapi), original);
                 } else if (path.contains("song/like")) {
                     original = EAPIHelper.modifyLike(ClassHelper.HttpParams.getParams(context, eapi), original);
-                } else if (path.contains("sound/mobile") || path.contains("page=audio_effect")) {
+                } else if (path.contains("usertool/sound") || path.contains("sound/mobile") || path.contains("sound/twinkle") || path.contains("sound/material") || path.contains("page=audio_effect")) {
                     original = EAPIHelper.modifyEffect(original);
-                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && path.contains("vip/info")) {
+                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && (path.contains("vip/info") || path.contains("vip-membership"))) {
                     original = EAPIHelper.modifyVipInfo(original);
-                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && path.contains("account/get")) {
+                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && (path.contains("account/get") || path.contains("user/info"))) {
                     original = EAPIHelper.modifyAccount(original);
                 } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && path.contains("vipauth/app/auth/query")) {
                     original = EAPIHelper.modifyVipAuth(original);
