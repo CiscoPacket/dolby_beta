@@ -58,12 +58,6 @@ android {
     lintOptions {
         abortOnError false
     }
-
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging true
-        }
-    }
 }
 
 dependencies {
