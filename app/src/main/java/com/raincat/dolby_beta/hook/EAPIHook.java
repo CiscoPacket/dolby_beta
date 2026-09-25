@@ -76,7 +76,16 @@ public class EAPIHook {
                     original = EAPIHelper.modifyLike(ClassHelper.HttpParams.getParams(context, eapi), original);
                 } else if (path.contains("sound/mobile") || path.contains("page=audio_effect")) {
                     original = EAPIHelper.modifyEffect(original);
+                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && path.contains("vip/info")) {
+                    original = EAPIHelper.modifyVipInfo(original);
+                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && path.contains("account/get")) {
+                    original = EAPIHelper.modifyAccount(original);
+                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && path.contains("vipauth/app/auth/query")) {
+                    original = EAPIHelper.modifyVipAuth(original);
                 } else if (path.contains("batch")) {
+                    if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
+                        original = EAPIHelper.modifyBatchVip(original);
+                    }
                     if (original.contains("comment\\/banner\\/get")) {
                         JSONObject jsonObject = new JSONObject(original);
                         if (!jsonObject.isNull("/api/content/exposure/comment/banner/get")) {
