@@ -2,7 +2,8 @@ buildscript {
     repositories {
         google()
         mavenCentral()
-        jcenter()
+        maven { url "https://api.xposed.info/" }
+        maven { url "https://maven.aliyun.com/repository/public/" }
     }
     dependencies {
         classpath "com.android.tools.build:gradle:4.0.2"
@@ -13,7 +14,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        jcenter()
+        maven { url "https://api.xposed.info/" }
+        maven { url "https://maven.aliyun.com/repository/public/" }
         flatDir {
             dirs 'libs'
         }
