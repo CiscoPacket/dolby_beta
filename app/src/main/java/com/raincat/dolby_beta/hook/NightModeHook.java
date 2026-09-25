@@ -29,8 +29,12 @@ public class NightModeHook {
 
     public NightModeHook(Context context, int versionCode) {
         Class<?> superActivityClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.activity.MainActivity", context.getClassLoader());
-        while (superActivityClass != null && !superActivityClass.getName().contains("AppCompatActivity"))
+        while (superActivityClass != null && !superActivityClass.getName().contains("AppCompatActivity") && !superActivityClass.getName().equals("android.app.Activity"))
             superActivityClass = superActivityClass.getSuperclass();
+
+        if (superActivityClass == null) {
+            superActivityClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.activity.MainActivity", context.getClassLoader());
+        }
 
         if (superActivityClass == null) {
             return;

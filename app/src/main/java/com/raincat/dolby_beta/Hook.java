@@ -80,6 +80,8 @@ public class Hook {
                         ExtraHelper.init(context);
                         //初始化设置
                         SettingHelper.init(context);
+                        //初始化ClassHelper
+                        ClassHelper.init(context, versionCode);
 
                         final String processName = Tools.getCurrentProcessName(context);
                         if (processName.equals(PACKAGE_NAME)) {
@@ -111,6 +113,16 @@ public class Hook {
                             new InternalDialogHook(context, versionCode);
                             //修复登录失败
                             new LoginFixHook(context);
+                            //美化与界面定制（不依赖DexKit，主线程同步立即注册，避免时机过晚导致不生效）
+                            new NightModeHook(context, versionCode);
+                            new HideTabHook(context, versionCode);
+                            new HideSidebarHook(context, versionCode);
+                            new HideBannerHook(context, versionCode);
+                            new HideBubbleHook(context);
+                            new PlayerActivityHook(context, versionCode);
+                            new CommentHotClickHook(context);
+                            new AdExtraHook();
+
                             ClassHelper.getCacheClassList(context, versionCode, () -> {
                                 //获取账号信息
                                 new UserProfileHook(context);
@@ -118,24 +130,8 @@ public class Hook {
                                 new EAPIHook(context);
                                 //下载MD5校验
                                 new DownloadMD5Hook(context);
-                                //夜间模式
-                                new NightModeHook(context, versionCode);
-                                //精简tab
-                                new HideTabHook(context, versionCode);
-                                //精简侧边栏
-                                new HideSidebarHook(context, versionCode);
-                                //移除Banner
-                                new HideBannerHook(context, versionCode);
-                                //隐藏小红点
-                                new HideBubbleHook(context);
-                                //黑胶停转，隐藏K歌按钮
-                                new PlayerActivityHook(context, versionCode);
-                                //打开评论后优先显示最热评论
-                                new CommentHotClickHook(context);
                                 //绕过CDN责任链拦截器检测
                                 new CdnHook(context, versionCode);
-                                //广告移除增强
-                                new AdExtraHook();
 
                                 mainProcessInit = true;
                                 if (mainProcessInit && playProcessInit)

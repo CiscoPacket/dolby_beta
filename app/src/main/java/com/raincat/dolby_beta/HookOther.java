@@ -27,6 +27,8 @@ import com.raincat.dolby_beta.hook.HideSidebarHook;
 import com.raincat.dolby_beta.hook.HideTabHook;
 import com.raincat.dolby_beta.hook.InternalDialogHook;
 import com.raincat.dolby_beta.hook.MagiskFixHook;
+import com.raincat.dolby_beta.hook.AdExtraHook;
+import com.raincat.dolby_beta.hook.NightModeHook;
 import com.raincat.dolby_beta.hook.PlayerActivityHook;
 import com.raincat.dolby_beta.hook.ProxyHook;
 import com.raincat.dolby_beta.hook.SettingHook;
@@ -75,6 +77,8 @@ public class HookOther {
                         ExtraHelper.init(context);
                         //初始化设置
                         SettingHelper.init(context);
+                        //初始化ClassHelper
+                        ClassHelper.init(context, versionCode);
 
                         final String processName = Tools.getCurrentProcessName(context);
                         if (processName.equals(PACKAGE_NAME)) {
@@ -100,6 +104,16 @@ public class HookOther {
                             new MagiskFixHook(context);
                             //去掉内测与听歌识曲弹窗
                             new InternalDialogHook(context, versionCode);
+                            //美化与界面定制（不依赖DexKit，主线程同步立即注册，避免时机过晚导致不生效）
+                            new NightModeHook(context, versionCode);
+                            new HideTabHook(context, versionCode);
+                            new HideSidebarHook(context, versionCode);
+                            new HideBannerHook(context, versionCode);
+                            new HideBubbleHook(context);
+                            new PlayerActivityHook(context, versionCode);
+                            new CommentHotClickHook(context);
+                            new AdExtraHook();
+
                             ClassHelper.getCacheClassList(context, versionCode, () -> {
                                 //获取账号信息
                                 new UserProfileHook(context);
@@ -107,18 +121,6 @@ public class HookOther {
                                 new EAPIHook(context);
                                 //下载MD5校验
                                 new DownloadMD5Hook(context);
-                                //精简tab
-                                new HideTabHook(context, versionCode);
-                                //精简侧边栏
-                                new HideSidebarHook(context, versionCode);
-                                //移除Banner
-                                new HideBannerHook(context, versionCode);
-                                //隐藏小红点
-                                new HideBubbleHook(context);
-                                //打开评论后优先显示最热评论
-                                new CommentHotClickHook(context);
-                                //黑胶停转，隐藏K歌按钮
-                                new PlayerActivityHook(context, versionCode);
                                 new CdnHook(context, versionCode);
 
                                 mainProcessInit = true;

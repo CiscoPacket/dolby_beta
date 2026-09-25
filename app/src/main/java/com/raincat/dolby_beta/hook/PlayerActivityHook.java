@@ -1,16 +1,19 @@
 package com.raincat.dolby_beta.hook;
 
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageSwitcher;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
 import android.widget.ViewFlipper;
@@ -29,86 +32,39 @@ import de.robv.android.xposed.XposedHelpers;
 
 /**
  * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2021/11/16
- *     desc   : 播放页hook (黑胶停转、隐藏K歌/音街、自定义本地/网络背景及高斯模糊)
- *     version: 2.0
+ *     author : RainCat & Cisco
+ *     desc   : 播放页hook (黑胶停转、隐藏K歌/音街、隐藏唱片黑胶、自定义本地/网络背景及高斯模糊)
+ *     version: 3.0
  * </pre>
  */
 public class PlayerActivityHook {
+    private static WeakReference<Object> sLastBgObject;
+    private static WeakReference<ImageSwitcher> sLastImageSwitcher;
     private static WeakReference<View> sLastBgView;
+    private static WeakReference<Context> sLastContext;
     private static String sCachedKey = null;
     private static Bitmap sCachedBitmap = null;
 
-    public PlayerActivityHook(Context context, final int versionCode) {
+    public PlayerActivityHook(final Context context, final int versionCode) {
+        // 1. 播放界面 (PlayerActivity)
         Class<?> playerActivityClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.activity.PlayerActivity", context.getClassLoader());
         if (playerActivityClass != null) {
             XposedHelpers.findAndHookMethod(playerActivityClass, "onCreate", Bundle.class, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     super.afterHookedMethod(param);
-                    boolean black = SettingHelper.getInstance().isEnable(SettingHelper.beauty_black_hide_key);
-                    boolean ksong = SettingHelper.getInstance().isEnable(SettingHelper.beauty_ksong_hide_key);
-                    ViewFlipper playerDiscViewFlipper = null;
-                    for (Field field : param.thisObject.getClass().getDeclaredFields()) {
-                        if (black && field.getType().getName().contains("PlayerDiscViewFlipper")) {
-                            field.setAccessible(true);
-                            playerDiscViewFlipper = (ViewFlipper) field.get(param.thisObject);
-                        }
-                        if (ksong && field.getType().getName().contains("ImageView")) {
-                            field.setAccessible(true);
-                            ImageView imageView = (ImageView) field.get(param.thisObject);
-                            if (imageView != null && imageView.getContentDescription() != null) {
-                                String desc = imageView.getContentDescription().toString();
-                                if (desc.contains("音街") || desc.contains("铃声")) {
-                                    ViewGroup.LayoutParams layoutParams = imageView.getLayoutParams();
-                                    if (layoutParams != null) {
-                                        layoutParams.width = 0;
-                                        layoutParams.height = 0;
-                                        imageView.setLayoutParams(layoutParams);
-                                    }
-                                    if (imageView.getParent() instanceof View) {
-                                        View parent = (View) imageView.getParent();
-                                        layoutParams = parent.getLayoutParams();
-                                        if (layoutParams != null) {
-                                            layoutParams.width = 0;
-                                            layoutParams.height = 0;
-                                            parent.setLayoutParams(layoutParams);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (playerDiscViewFlipper == null) {
-                        return;
-                    }
-                    for (int i = 0; i < playerDiscViewFlipper.getChildCount(); i++) {
-                        View coverView = null, imageView = null;
-                        RelativeLayout rotationRelativeLayout = (RelativeLayout) playerDiscViewFlipper.getChildAt(i);
-                        for (int j = 0; j < rotationRelativeLayout.getChildCount(); j++) {
-                            View child = rotationRelativeLayout.getChildAt(j);
-                            if (child.getClass().getName().contains("ImageView")
-                                    && child.getClass().getName().contains("android")) {
-                                coverView = child;
-                            } else {
-                                imageView = child;
-                            }
-                        }
-                        if (coverView != null && imageView != null) {
-                            final View coverViewF = coverView;
-                            final View imageViewF = imageView;
-                            coverView.post(() -> {
-                                RelativeLayout.LayoutParams layoutParams = (RelativeLayout.LayoutParams) imageViewF.getLayoutParams();
-                                if (layoutParams != null) {
-                                    layoutParams.height = coverViewF.getHeight();
-                                    layoutParams.width = coverViewF.getWidth();
-                                    imageViewF.setLayoutParams(layoutParams);
-                                }
-                                coverViewF.setVisibility(View.INVISIBLE);
-                            });
-                        }
+                    if (param.thisObject instanceof Activity) {
+                        final Activity activity = (Activity) param.thisObject;
+                        sLastContext = new WeakReference<>(activity);
+                        final View decorView = activity.getWindow().getDecorView();
+                        decorView.post(() -> {
+                            applyBlackHideFromDecorView(decorView);
+                            applyKsongHideFromDecorView(decorView);
+                        });
+                        decorView.postDelayed(() -> {
+                            applyBlackHideFromDecorView(decorView);
+                            applyKsongHideFromDecorView(decorView);
+                        }, 500);
                     }
                 }
             });
@@ -116,7 +72,15 @@ public class PlayerActivityHook {
             try {
                 XposedHelpers.findAndHookMethod(playerActivityClass, "onResume", new XC_MethodHook() {
                     @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        super.afterHookedMethod(param);
+                        if (param.thisObject instanceof Activity) {
+                            Activity activity = (Activity) param.thisObject;
+                            sLastContext = new WeakReference<>(activity);
+                            View decorView = activity.getWindow().getDecorView();
+                            applyBlackHideFromDecorView(decorView);
+                            applyKsongHideFromDecorView(decorView);
+                        }
                         reloadBackground();
                     }
                 });
@@ -124,6 +88,37 @@ public class PlayerActivityHook {
             }
         }
 
+        // 2. 黑胶唱片 (PlayerDiscViewFlipper) 自动隐藏唱片圈并放大专辑封面
+        Class<?> discFlipperClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.PlayerDiscViewFlipper", context.getClassLoader());
+        if (discFlipperClass != null) {
+            try {
+                XposedHelpers.findAndHookMethod(discFlipperClass, "onLayout", boolean.class, int.class, int.class, int.class, int.class, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        super.afterHookedMethod(param);
+                        if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_black_hide_key)) {
+                            hideVinylDisc((ViewGroup) param.thisObject);
+                        }
+                    }
+                });
+            } catch (Throwable ignored) {
+            }
+            try {
+                XposedHelpers.findAndHookMethod(discFlipperClass, "switchDisc", boolean.class, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        super.afterHookedMethod(param);
+                        if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_black_hide_key)) {
+                            final ViewGroup vg = (ViewGroup) param.thisObject;
+                            vg.post(() -> hideVinylDisc(vg));
+                        }
+                    }
+                });
+            } catch (Throwable ignored) {
+            }
+        }
+
+        // 3. 黑胶停转 (RotationRelativeLayout & AnimationHolder)
         XC_MethodHook stopRotationHook = new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
@@ -133,92 +128,65 @@ public class PlayerActivityHook {
             }
         };
 
+        Class<?> rotationLayoutClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.RotationRelativeLayout", context.getClassLoader());
+        if (rotationLayoutClass != null) {
+            try {
+                XposedHelpers.findAndHookMethod(rotationLayoutClass, "prepareAnimation", stopRotationHook);
+            } catch (Throwable ignored) {
+            }
+            try {
+                XposedHelpers.findAndHookMethod(rotationLayoutClass, "start", stopRotationHook);
+            } catch (Throwable ignored) {
+            }
+        }
+
         Class<?> animHolderClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.RotationRelativeLayout$AnimationHolder", context.getClassLoader());
         if (animHolderClass != null) {
             try {
                 XposedHelpers.findAndHookMethod(animHolderClass, "prepareAnimation", stopRotationHook);
-            } catch (Throwable t) {
-                XposedBridge.log("[dolby_beta] hook prepareAnimation failed: " + t);
+            } catch (Throwable ignored) {
+            }
+            try {
+                XposedHelpers.findAndHookMethod(animHolderClass, "start", stopRotationHook);
+            } catch (Throwable ignored) {
+            }
+            try {
+                XposedHelpers.findAndHookMethod(animHolderClass, "startAnimator", stopRotationHook);
+            } catch (Throwable ignored) {
             }
         }
+
         Class<?> rotSubClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.RotationRelativeLayout$a", context.getClassLoader());
         if (rotSubClass != null) {
             try {
                 XposedHelpers.findAndHookMethod(rotSubClass, "b", stopRotationHook);
-            } catch (Throwable t) {
-                XposedBridge.log("[dolby_beta] hook RotationRelativeLayout$a.b failed: " + t);
-            }
-        }
-
-        XC_MethodHook bgHook = new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-                    return;
-                }
-                String customPath = SettingHelper.getInstance().getPictureUrl();
-                if (TextUtils.isEmpty(customPath)) {
-                    return;
-                }
-                int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
-
-                if (param.thisObject instanceof View) {
-                    sLastBgView = new WeakReference<>((View) param.thisObject);
-                }
-
-                String cleanPath = customPath.startsWith("file://") ? customPath.substring(7) : customPath;
-                if (cleanPath.startsWith("/")) {
-                    File file = new File(cleanPath);
-                    if (!file.exists() || !file.isFile() || file.length() == 0) {
-                        return;
-                    }
-                    if (param.thisObject instanceof View) {
-                        View targetView = (View) param.thisObject;
-                        Bitmap blurred = getOrLoadBlurredBitmap(file, blurRadius, targetView.getContext());
-                        if (blurred != null) {
-                            applyBitmapToView(targetView, blurred);
-                            param.setResult(null);
-                            return;
-                        }
-                    }
-                } else if (customPath.startsWith("http://") || customPath.startsWith("https://")) {
-                    if (param.args != null && param.args.length > 0 && param.args[0] instanceof String) {
-                        param.args[0] = customPath;
-                    }
-                    if (param.args != null && param.args.length >= 3 && param.args[2] instanceof Integer) {
-                        param.args[2] = blurRadius;
-                    }
-                }
-            }
-        };
-
-        Class<?> playerBgClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.PlayerBackgroundImage", context.getClassLoader());
-        if (playerBgClass != null) {
-            for (Method m : playerBgClass.getDeclaredMethods()) {
-                if ("setBlurCover".equals(m.getName())) {
-                    try {
-                        XposedBridge.hookMethod(m, bgHook);
-                    } catch (Throwable ignored) {
-                    }
-                }
-            }
-        }
-
-        Class<?> rClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.r", context.getClassLoader());
-        if (rClass != null) {
-            try {
-                XposedHelpers.findAndHookMethod(rClass, "a", String.class, String.class, int.class, bgHook);
             } catch (Throwable ignored) {
             }
         }
-    }
 
-    public static void reloadBackground() {
-        if (sLastBgView != null) {
-            View view = sLastBgView.get();
-            if (view != null) {
-                view.post(() -> {
-                    try {
+        // 4. 自定义播放界面背景 (PlayerBackgroundImage)
+        Class<?> playerBgClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.PlayerBackgroundImage", context.getClassLoader());
+        if (playerBgClass != null) {
+            // 构造方法中保存引用
+            XposedBridge.hookAllConstructors(playerBgClass, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    sLastBgObject = new WeakReference<>(param.thisObject);
+                    if (param.args.length > 0 && param.args[0] instanceof Context) {
+                        sLastContext = new WeakReference<>((Context) param.args[0]);
+                    }
+                    if (param.args.length > 1 && param.args[1] instanceof ImageSwitcher) {
+                        sLastImageSwitcher = new WeakReference<>((ImageSwitcher) param.args[1]);
+                    }
+                }
+            });
+
+            // 歌曲设置封面 Drawable 时替换为自定义高斯模糊图
+            try {
+                XposedHelpers.findAndHookMethod(playerBgClass, "setImageDrawable", Drawable.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        sLastBgObject = new WeakReference<>(param.thisObject);
                         if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
                             return;
                         }
@@ -226,22 +194,283 @@ public class PlayerActivityHook {
                         if (TextUtils.isEmpty(customPath)) {
                             return;
                         }
+                        Context ctx = getContextFromBgObject(param.thisObject);
+                        if (ctx == null) ctx = context;
+
                         String cleanPath = customPath.startsWith("file://") ? customPath.substring(7) : customPath;
                         if (cleanPath.startsWith("/")) {
                             File file = new File(cleanPath);
-                            if (file.exists() && file.isFile()) {
+                            if (file.exists() && file.isFile() && file.length() > 0) {
                                 int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
-                                Bitmap blurred = getOrLoadBlurredBitmap(file, blurRadius, view.getContext());
+                                Bitmap blurred = getOrLoadBlurredBitmap(file, blurRadius, ctx);
                                 if (blurred != null) {
-                                    applyBitmapToView(view, blurred);
+                                    param.args[0] = new BitmapDrawable(ctx.getResources(), blurred);
                                 }
                             }
                         }
-                    } catch (Throwable t) {
-                        XposedBridge.log("[dolby_beta] reloadBackground failed: " + t);
                     }
                 });
+            } catch (Throwable ignored) {
             }
+
+            // 拦截网络封面模糊加载 setBlurCover(...)
+            XC_MethodHook blurCoverHook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    sLastBgObject = new WeakReference<>(param.thisObject);
+                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
+                        return;
+                    }
+                    String customPath = SettingHelper.getInstance().getPictureUrl();
+                    if (TextUtils.isEmpty(customPath)) {
+                        return;
+                    }
+                    Context ctx = getContextFromBgObject(param.thisObject);
+                    if (ctx == null) ctx = context;
+
+                    String cleanPath = customPath.startsWith("file://") ? customPath.substring(7) : customPath;
+                    if (cleanPath.startsWith("/")) {
+                        File file = new File(cleanPath);
+                        if (file.exists() && file.isFile() && file.length() > 0) {
+                            int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
+                            Bitmap blurred = getOrLoadBlurredBitmap(file, blurRadius, ctx);
+                            if (blurred != null) {
+                                BitmapDrawable d = new BitmapDrawable(ctx.getResources(), blurred);
+                                XposedHelpers.callMethod(param.thisObject, "setImageDrawable", d);
+                                param.setResult(null); // 拦截后续网络加载
+                                return;
+                            }
+                        }
+                    } else if (customPath.startsWith("http://") || customPath.startsWith("https://")) {
+                        if (param.args.length > 0 && param.args[0] instanceof String) {
+                            param.args[0] = customPath;
+                        }
+                        if (param.args.length > 1 && param.args[1] instanceof String) {
+                            param.args[1] = customPath;
+                        }
+                    }
+                }
+            };
+
+            for (Method m : playerBgClass.getDeclaredMethods()) {
+                if ("setBlurCover".equals(m.getName())) {
+                    try {
+                        XposedBridge.hookMethod(m, blurCoverHook);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+        }
+
+        // 兼容旧版混淆类
+        Class<?> rClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.r", context.getClassLoader());
+        if (rClass != null) {
+            try {
+                XposedHelpers.findAndHookMethod(rClass, "a", String.class, String.class, int.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
+                            return;
+                        }
+                        String customPath = SettingHelper.getInstance().getPictureUrl();
+                        if (TextUtils.isEmpty(customPath)) {
+                            return;
+                        }
+                        if (customPath.startsWith("http://") || customPath.startsWith("https://")) {
+                            param.args[0] = customPath;
+                            param.args[1] = customPath;
+                        }
+                    }
+                });
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /**
+     * 实时重新加载播放页背景
+     */
+    public static void reloadBackground() {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
+                    return;
+                }
+                String customPath = SettingHelper.getInstance().getPictureUrl();
+                if (TextUtils.isEmpty(customPath)) {
+                    return;
+                }
+                String cleanPath = customPath.startsWith("file://") ? customPath.substring(7) : customPath;
+                if (!cleanPath.startsWith("/")) {
+                    return;
+                }
+                File file = new File(cleanPath);
+                if (!file.exists() || !file.isFile() || file.length() == 0) {
+                    return;
+                }
+                Context ctx = sLastContext != null ? sLastContext.get() : null;
+                Object bgObj = sLastBgObject != null ? sLastBgObject.get() : null;
+                if (ctx == null && bgObj != null) {
+                    ctx = getContextFromBgObject(bgObj);
+                }
+                if (ctx == null && sLastImageSwitcher != null && sLastImageSwitcher.get() != null) {
+                    ctx = sLastImageSwitcher.get().getContext();
+                }
+                if (ctx == null) {
+                    return;
+                }
+
+                int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
+                Bitmap blurred = getOrLoadBlurredBitmap(file, blurRadius, ctx);
+                if (blurred == null) {
+                    return;
+                }
+                BitmapDrawable drawable = new BitmapDrawable(ctx.getResources(), blurred);
+
+                if (bgObj != null) {
+                    try {
+                        XposedHelpers.callMethod(bgObj, "setImageDrawable", drawable);
+                    } catch (Throwable ignored) {
+                    }
+                }
+                if (sLastImageSwitcher != null) {
+                    ImageSwitcher is = sLastImageSwitcher.get();
+                    if (is != null) {
+                        is.setImageDrawable(drawable);
+                    }
+                }
+                if (sLastBgView != null) {
+                    View v = sLastBgView.get();
+                    if (v != null) {
+                        applyBitmapToView(v, blurred);
+                    }
+                }
+            } catch (Throwable t) {
+                XposedBridge.log("[dolby_beta] reloadBackground failed: " + t);
+            }
+        });
+    }
+
+    private static Context getContextFromBgObject(Object bgObj) {
+        if (bgObj == null) return sLastContext != null ? sLastContext.get() : null;
+        try {
+            Field f = bgObj.getClass().getDeclaredField("mContext");
+            f.setAccessible(true);
+            Context c = (Context) f.get(bgObj);
+            if (c != null) return c;
+        } catch (Throwable ignored) {
+        }
+        try {
+            Field f = bgObj.getClass().getDeclaredField("mImageSwitcher");
+            f.setAccessible(true);
+            View v = (View) f.get(bgObj);
+            if (v != null) return v.getContext();
+        } catch (Throwable ignored) {
+        }
+        return sLastContext != null ? sLastContext.get() : null;
+    }
+
+    private static void applyBlackHideFromDecorView(View root) {
+        if (root == null || !SettingHelper.getInstance().isEnable(SettingHelper.beauty_black_hide_key)) {
+            return;
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) root;
+            if (vg.getClass().getName().contains("PlayerDiscViewFlipper")) {
+                hideVinylDisc(vg);
+                return;
+            }
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                applyBlackHideFromDecorView(vg.getChildAt(i));
+            }
+        }
+    }
+
+    private static void hideVinylDisc(ViewGroup flipper) {
+        if (flipper == null) return;
+        for (int i = 0; i < flipper.getChildCount(); i++) {
+            View child = flipper.getChildAt(i);
+            if (!(child instanceof ViewGroup)) continue;
+            ViewGroup rotationLayout = (ViewGroup) child;
+            View coverView = null, imageView = null;
+            for (int j = 0; j < rotationLayout.getChildCount(); j++) {
+                View subChild = rotationLayout.getChildAt(j);
+                String name = subChild.getClass().getName();
+                if (name.contains("android.widget.ImageView") || name.equals("android.widget.ImageView")) {
+                    coverView = subChild;
+                } else if (subChild instanceof ImageView) {
+                    imageView = subChild;
+                }
+            }
+            if (coverView != null && imageView != null) {
+                final View finalCover = coverView;
+                final View finalImage = imageView;
+                finalCover.setVisibility(View.INVISIBLE);
+                ViewGroup.LayoutParams lp = finalImage.getLayoutParams();
+                if (lp != null) {
+                    int w = finalCover.getWidth();
+                    int h = finalCover.getHeight();
+                    if (w > 0 && h > 0) {
+                        lp.width = w;
+                        lp.height = h;
+                        finalImage.setLayoutParams(lp);
+                    } else {
+                        finalCover.post(() -> {
+                            if (finalCover.getWidth() > 0 && finalCover.getHeight() > 0) {
+                                ViewGroup.LayoutParams innerLp = finalImage.getLayoutParams();
+                                if (innerLp != null) {
+                                    innerLp.width = finalCover.getWidth();
+                                    innerLp.height = finalCover.getHeight();
+                                    finalImage.setLayoutParams(innerLp);
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    private static void applyKsongHideFromDecorView(View root) {
+        if (root == null || !SettingHelper.getInstance().isEnable(SettingHelper.beauty_ksong_hide_key)) {
+            return;
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) root;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                applyKsongHideFromDecorView(vg.getChildAt(i));
+            }
+        }
+        CharSequence desc = root.getContentDescription();
+        if (desc != null) {
+            String d = desc.toString();
+            if (d.contains("K歌") || d.contains("音街") || d.contains("铃声") || d.contains("伴奏") || d.contains("唱这首歌") || d.equals("唱")) {
+                root.setVisibility(View.GONE);
+                ViewGroup.LayoutParams lp = root.getLayoutParams();
+                if (lp != null) {
+                    lp.width = 0;
+                    lp.height = 0;
+                    root.setLayoutParams(lp);
+                }
+            }
+        }
+        try {
+            if (root.getId() != View.NO_ID && root.getResources() != null) {
+                String entryName = root.getResources().getResourceEntryName(root.getId());
+                if (entryName != null) {
+                    String lower = entryName.toLowerCase();
+                    if (lower.contains("ksong") || lower.contains("karaoke") || lower.contains("sing_song") || lower.contains("ring_tone")) {
+                        root.setVisibility(View.GONE);
+                        ViewGroup.LayoutParams lp = root.getLayoutParams();
+                        if (lp != null) {
+                            lp.width = 0;
+                            lp.height = 0;
+                            root.setLayoutParams(lp);
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
         }
     }
 
