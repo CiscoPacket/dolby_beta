@@ -36,6 +36,10 @@ public class SettingHelper {
     public static final String warn_title = "开启Hook警告";
     public static final String warn_sub = "当模块出现部分类无法Hook时在通知栏上显示，方便定位排查问题";
 
+    public static final String debug_key = "β_debug_key";
+    public static final String debug_title = "调试日志模式";
+    public static final String debug_sub = "捕获崩溃闪退堆栈，记录EAPI与Hook执行日志至本地缓存文件";
+
     public static final String black_key = "β_black_key";
     public static final String black_title = "本地黑胶";
     public static final String black_sub = "去广告、鲸云音效、个性换肤等（自定义启动图等需要访问网易服务器的设置不可用）";
@@ -99,7 +103,7 @@ public class SettingHelper {
     public static final String local_vip_key = "β_local_vip_key";
     public static final String local_vip_title = "脚本本地VIP";
     public static final String local_vip_sub = "UnblockNeteaseMusic 的 ENABLE_LOCAL_VIP，与「本地黑胶」不同。可选关闭 / CVIP / SVIP";
-    public static final String local_vip_default = "";
+    public static final String local_vip_default = "off";
 
     public static final String proxy_gray_key = "β_proxy_gray_key";
     public static final String proxy_gray_title = "不变灰";
@@ -204,6 +208,7 @@ public class SettingHelper {
         settingMap.put(master_key, sharedPreferences.getBoolean(master_key, true));
         settingMap.put(dex_key, sharedPreferences.getBoolean(dex_key, true));
         settingMap.put(warn_key, sharedPreferences.getBoolean(warn_key, true));
+        settingMap.put(debug_key, sharedPreferences.getBoolean(debug_key, false));
         settingMap.put(black_key, sharedPreferences.getBoolean(black_key, true));
         settingMap.put(listen_key, sharedPreferences.getBoolean(listen_key, false));
         settingMap.put(fix_comment_key, sharedPreferences.getBoolean(fix_comment_key, false));
@@ -242,6 +247,10 @@ public class SettingHelper {
         return getSetting(master_key) && getSetting(key);
     }
 
+    public boolean isDebugMode() {
+        return isEnable(debug_key);
+    }
+
     private void deleteSetting(String key) {
         if (sharedPreferences.contains(key)) {
             sharedPreferences.edit().remove(key).apply();
@@ -252,6 +261,7 @@ public class SettingHelper {
         deleteSetting(master_key);
         deleteSetting(dex_key);
         deleteSetting(warn_key);
+        deleteSetting(debug_key);
         deleteSetting(black_key);
         deleteSetting(listen_key);
         deleteSetting(fix_comment_key);
@@ -345,18 +355,18 @@ public class SettingHelper {
     }
     public String getLocalVip() {
         String value = sharedPreferences.getString(SettingHelper.local_vip_key, SettingHelper.local_vip_default);
-        if ((value == null || value.trim().isEmpty()) && isEnable(black_key)) {
-            return "svip";
+        if (value == null || value.trim().isEmpty() || "off".equalsIgnoreCase(value.trim())) {
+            return "off";
         }
-        return value == null ? "" : value.trim();
+        return value.trim().toLowerCase();
     }
 
     public void setLocalVip(String value) {
-        String normalized = value == null ? "" : value.trim().toLowerCase();
+        String normalized = value == null ? "off" : value.trim().toLowerCase();
         if ("true".equals(normalized)) {
             normalized = "cvip";
-        } else if ("false".equals(normalized) || "off".equals(normalized) || "0".equals(normalized)) {
-            normalized = "";
+        } else if ("false".equals(normalized) || "off".equals(normalized) || "".equals(normalized) || "0".equals(normalized) || "none".equals(normalized)) {
+            normalized = "off";
         }
         sharedPreferences.edit().putString(SettingHelper.local_vip_key, normalized).apply();
     }

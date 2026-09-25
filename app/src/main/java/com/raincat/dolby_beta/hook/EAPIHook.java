@@ -6,11 +6,14 @@ import android.text.TextUtils;
 
 import com.raincat.dolby_beta.db.CloudDao;
 import com.raincat.dolby_beta.helper.ClassHelper;
+import com.raincat.dolby_beta.helper.DebugLogger;
 import com.raincat.dolby_beta.helper.EAPIHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.lang.reflect.Method;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -28,7 +31,12 @@ import de.robv.android.xposed.XposedBridge;
 
 public class EAPIHook {
     public EAPIHook(final Context context) {
-        XposedBridge.hookMethod(ClassHelper.HttpResponse.getResultMethod(context), new XC_MethodHook() {
+        Method resultMethod = ClassHelper.HttpResponse.getResultMethod(context);
+        if (resultMethod == null) {
+            DebugLogger.e("EAPIHook", "HttpResponse.getResultMethod is null, skipping EAPI hook", null);
+            return;
+        }
+        XposedBridge.hookMethod(resultMethod, new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 try {
@@ -44,6 +52,7 @@ public class EAPIHook {
                     if (TextUtils.isEmpty(original)) {
                         return;
                     }
+                    String originalBackup = original;
                     ClassHelper.HttpResponse httpResponse = new ClassHelper.HttpResponse(param.thisObject);
                     Object eapi = httpResponse.getEapi(context);
                     Uri uri = ClassHelper.HttpUrl.getUri(context, eapi);
@@ -77,7 +86,7 @@ public class EAPIHook {
                                 original = EAPIHelper.modifyPlayer(jsonObject.toString());
                             }
                         } catch (Throwable t) {
-                            XposedBridge.log("[dolby_beta] download/url modify error: " + t.getMessage());
+                            DebugLogger.e("EAPIHook", "download/url modify error: " + t.getMessage(), t);
                         }
                     } else if (path.contains("v1/playlist/manipulate/tracks")) {
                         original = EAPIHelper.modifyManipulate(ClassHelper.HttpParams.getParams(context, eapi), original);
@@ -158,13 +167,21 @@ public class EAPIHook {
                         original = EAPIHelper.injectUniversalPrivilege(original);
                     }
 
-                    try {
-                        param.setResult(param.getResult() instanceof JSONObject ? new JSONObject(original) : original);
-                    } catch (Throwable t) {
-                        param.setResult(original);
+                    boolean modified = !original.equals(originalBackup);
+                    DebugLogger.logEapi(path, true, modified, null);
+                    if (modified) {
+                        if (param.getResult() instanceof JSONObject) {
+                            try {
+                                param.setResult(new JSONObject(original));
+                            } catch (Throwable t) {
+                                DebugLogger.e("EAPIHook", "Failed to parse modified response as JSONObject: " + path, t);
+                            }
+                        } else {
+                            param.setResult(original);
+                        }
                     }
                 } catch (Throwable t) {
-                    XposedBridge.log("[dolby_beta] EAPIHook error: " + t.getMessage());
+                    DebugLogger.e("EAPIHook", "EAPIHook error: " + t.getMessage(), t);
                 }
             }
         });

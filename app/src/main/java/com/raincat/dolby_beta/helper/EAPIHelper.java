@@ -36,29 +36,38 @@ public class EAPIHelper {
      * 解除下载加密
      */
     public static String modifyPlayer(String original) {
-        NeteaseSongListBean listBean = gson.fromJson(original, NeteaseSongListBean.class);
+        if (original == null || original.isEmpty()) return original;
+        try {
+            NeteaseSongListBean listBean = gson.fromJson(original, NeteaseSongListBean.class);
+            if (listBean == null || listBean.getData() == null || listBean.getData().isEmpty()) {
+                return original;
+            }
 
-        NeteaseSongListBean modifyListBean = new NeteaseSongListBean();
-        modifyListBean.setCode(200);
-        modifyListBean.setData(new ArrayList<>());
-        for (NeteaseSongListBean.DataBean dataBean : listBean.getData()) {
-            //flag与8非0为云盘歌曲
-            if ((dataBean.getFlag() & 0x8) == 0) {
-
-                dataBean.setFee(0);
-                dataBean.setFlag(0);
-                dataBean.setPayed(0);
-                dataBean.setFreeTrialInfo(null);
-                if (dataBean.getUrl() != null && !dataBean.getUrl().isEmpty()) {
-                    dataBean.setCode(200);
-                    if (dataBean.getUrl().contains("126.net") && dataBean.getUrl().contains("?")) {
-                        dataBean.setUrl(dataBean.getUrl().substring(0, dataBean.getUrl().indexOf("?")));
+            NeteaseSongListBean modifyListBean = new NeteaseSongListBean();
+            modifyListBean.setCode(200);
+            modifyListBean.setData(new ArrayList<>());
+            for (NeteaseSongListBean.DataBean dataBean : listBean.getData()) {
+                if (dataBean == null) continue;
+                //flag与8非0为云盘歌曲
+                if ((dataBean.getFlag() & 0x8) == 0) {
+                    dataBean.setFee(0);
+                    dataBean.setFlag(0);
+                    dataBean.setPayed(0);
+                    dataBean.setFreeTrialInfo(null);
+                    if (dataBean.getUrl() != null && !dataBean.getUrl().isEmpty()) {
+                        dataBean.setCode(200);
+                        if (dataBean.getUrl().contains("126.net") && dataBean.getUrl().contains("?")) {
+                            dataBean.setUrl(dataBean.getUrl().substring(0, dataBean.getUrl().indexOf("?")));
+                        }
                     }
                 }
+                modifyListBean.getData().add(dataBean);
             }
-            modifyListBean.getData().add(dataBean);
+            return gson.toJson(modifyListBean);
+        } catch (Throwable t) {
+            DebugLogger.e("EAPIHelper", "modifyPlayer error: " + t.getMessage(), t);
+            return original;
         }
-        return gson.toJson(modifyListBean);
     }
 
     /**
@@ -541,35 +550,45 @@ public class EAPIHelper {
     public static void injectPrivilege(JSONObject obj) {
         if (obj == null) return;
         try {
-            if (obj.has("cp")) obj.put("cp", 1);
-            if (obj.has("fee")) obj.put("fee", 0);
-            if (obj.has("payed") && obj.optInt("payed", 0) == 0) obj.put("payed", 1);
-            if (obj.has("st")) obj.put("st", 0);
+            if (obj.has("cp") && obj.opt("cp") instanceof Number) {
+                if (obj.has("subp") || obj.has("maxbr") || obj.has("downloadMaxbr")) {
+                    obj.put("cp", 1);
+                }
+            }
+            if (obj.has("fee") && obj.opt("fee") instanceof Number) {
+                obj.put("fee", 0);
+            }
+            if (obj.has("payed") && obj.opt("payed") instanceof Number && obj.optInt("payed", 0) == 0) {
+                obj.put("payed", 1);
+            }
+            if (obj.has("st") && obj.opt("st") instanceof Number) {
+                obj.put("st", 0);
+            }
             if (obj.has("sp") && obj.has("subp")) {
-                obj.put("sp", 7);
-                obj.put("subp", 1);
+                if (obj.opt("sp") instanceof Number) obj.put("sp", 7);
+                if (obj.opt("subp") instanceof Number) obj.put("subp", 1);
             }
             if (obj.has("playable")) {
                 obj.put("playable", true);
                 obj.put("unplayableType", "unknown");
             }
             int dlMax = obj.optInt("downloadMaxbr", 0);
-            if (dlMax == 0 && obj.has("downloadMaxbr")) {
+            if (dlMax == 0 && obj.has("downloadMaxbr") && obj.opt("downloadMaxbr") instanceof Number) {
                 dlMax = 999000;
                 obj.put("downloadMaxbr", 999000);
             }
-            if (obj.has("dl") && dlMax > 0 && obj.optInt("dl", 0) < dlMax) {
+            if (obj.has("dl") && dlMax > 0 && obj.opt("dl") instanceof Number && obj.optInt("dl", 0) < dlMax) {
                 obj.put("dl", dlMax);
             }
             int plMax = obj.optInt("playMaxbr", 0);
-            if (plMax == 0 && obj.has("playMaxbr")) {
+            if (plMax == 0 && obj.has("playMaxbr") && obj.opt("playMaxbr") instanceof Number) {
                 plMax = 999000;
                 obj.put("playMaxbr", 999000);
             }
-            if (obj.has("pl") && plMax > 0 && obj.optInt("pl", 0) < plMax) {
+            if (obj.has("pl") && plMax > 0 && obj.opt("pl") instanceof Number && obj.optInt("pl", 0) < plMax) {
                 obj.put("pl", plMax);
             }
-            if (obj.has("maxbr") && obj.optInt("maxbr", 0) < 999000) {
+            if (obj.has("maxbr") && obj.opt("maxbr") instanceof Number && obj.optInt("maxbr", 0) < 999000) {
                 obj.put("maxbr", 999000);
             }
             if (obj.has("plLevel") && "none".equals(obj.optString("plLevel"))) {
@@ -580,12 +599,6 @@ public class EAPIHelper {
             }
             if (obj.has("flLevel") && "none".equals(obj.optString("flLevel"))) {
                 obj.put("flLevel", "lossless");
-            }
-            if (obj.has("freeTrialInfo")) {
-                obj.put("freeTrialInfo", JSONObject.NULL);
-            }
-            if (obj.has("noCopyrightRcmd")) {
-                obj.put("noCopyrightRcmd", JSONObject.NULL);
             }
         } catch (Throwable ignored) {}
 

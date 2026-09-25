@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.Environment;
 
 import com.raincat.dolby_beta.helper.ClassHelper;
+import com.raincat.dolby_beta.helper.DebugLogger;
 import com.raincat.dolby_beta.helper.ExtraHelper;
 import com.raincat.dolby_beta.helper.FileHelper;
 import com.raincat.dolby_beta.helper.NotificationHelper;
@@ -72,6 +73,8 @@ public class Hook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         final Context context = (Context) param.thisObject;
+                        // 初始化调试日志系统与崩溃捕获
+                        DebugLogger.init(context);
                         final int versionCode = context.getPackageManager().getPackageInfo(PACKAGE_NAME, 0).versionCode;
                         //初始化仓库
                         ExtraHelper.init(context);
@@ -193,25 +196,28 @@ public class Hook {
     /**
      * 删掉广告和热修复
      */
-    private void deleteAdAndTinker() throws IOException {
-        //广告缓存路径
-        String CACHE_PATH = Environment.getExternalStorageDirectory() + "/netease/cloudmusic/Ad";
-        String CACHE_PATH2 = Environment.getExternalStorageDirectory() + "/Android/data/com.netease.cloudmusic/cache/Ad";
+    private void deleteAdAndTinker() {
+        try {
+            //广告缓存路径
+            String CACHE_PATH = Environment.getExternalStorageDirectory() + "/netease/cloudmusic/Ad";
+            String CACHE_PATH2 = Environment.getExternalStorageDirectory() + "/Android/data/com.netease.cloudmusic/cache/Ad";
 
-        String TINKER_PATH = "data/data/" + PACKAGE_NAME + "/tinker";
+            String TINKER_PATH = "/data/data/" + PACKAGE_NAME + "/tinker";
 
-        FileHelper.deleteDirectory(CACHE_PATH);
-        FileHelper.deleteDirectory(CACHE_PATH2);
+            FileHelper.deleteDirectory(CACHE_PATH);
+            FileHelper.deleteDirectory(CACHE_PATH2);
 
+            File tinkerFile = new File(TINKER_PATH);
+            if (tinkerFile.exists() && tinkerFile.isDirectory())
+                FileHelper.deleteDirectory(TINKER_PATH);
+            if (!tinkerFile.exists())
+                tinkerFile.createNewFile();
 
-        File tinkerFile = new File(TINKER_PATH);
-        if (tinkerFile.exists() && tinkerFile.isDirectory())
-            FileHelper.deleteDirectory(TINKER_PATH);
-        if (!tinkerFile.exists())
-            tinkerFile.createNewFile();
-
-        String command = "chmod 000 " + tinkerFile.getAbsolutePath();
-        Runtime runtime = Runtime.getRuntime();
-        runtime.exec(command);
+            String command = "chmod 000 " + tinkerFile.getAbsolutePath();
+            Runtime runtime = Runtime.getRuntime();
+            runtime.exec(command);
+        } catch (Throwable t) {
+            DebugLogger.e("Hook", "deleteAdAndTinker error: " + t.getMessage(), t);
+        }
     }
 }

@@ -38,9 +38,11 @@ public class ProxyLocalVipView extends BaseDialogItem {
                 checked = 2;
             } else if ("cvip".equalsIgnoreCase(current) || "true".equalsIgnoreCase(current)) {
                 checked = 1;
+            } else {
+                checked = 0;
             }
             final String[] labels = {"关闭", "CVIP（true）", "SVIP"};
-            final String[] values = {"", "cvip", "svip"};
+            final String[] values = {"off", "cvip", "svip"};
             new AlertDialog.Builder(context, android.R.style.Theme_Material_Light_Dialog_Alert)
                     .setTitle(SettingHelper.local_vip_title)
                     .setSingleChoiceItems(labels, checked, (dialog, which) -> {
@@ -66,7 +68,7 @@ public class ProxyLocalVipView extends BaseDialogItem {
 
     private void updateSub() {
         String value = SettingHelper.getInstance().getLocalVip();
-        if (TextUtils.isEmpty(value)) {
+        if (TextUtils.isEmpty(value) || "off".equalsIgnoreCase(value)) {
             sub = SettingHelper.local_vip_sub + "\n当前：关闭";
         } else if ("svip".equalsIgnoreCase(value)) {
             sub = SettingHelper.local_vip_sub + "\n当前：SVIP";
