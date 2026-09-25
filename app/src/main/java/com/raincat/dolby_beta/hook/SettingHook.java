@@ -60,6 +60,7 @@ import com.raincat.dolby_beta.view.proxy.configuration.*;
 import com.raincat.dolby_beta.view.setting.AboutView;
 import com.raincat.dolby_beta.view.setting.BeautyView;
 import com.raincat.dolby_beta.view.setting.BlackView;
+import com.raincat.dolby_beta.view.setting.DebugView;
 import com.raincat.dolby_beta.view.setting.DexView;
 import com.raincat.dolby_beta.view.setting.FixCommentView;
 import com.raincat.dolby_beta.view.setting.MasterView;
@@ -1487,6 +1488,7 @@ public class SettingHook {
             public void onReceive(Context c, Intent intent) {
                 String action = intent.getAction();
                 if (SettingHelper.refresh_setting.equals(action)) {
+                    SettingHelper.getInstance().refreshSetting(context);
                     refreshDialogItems(dialogRoot);
                     refreshDialogItems(dialogProxyRoot);
                     refreshDialogItems(dialogBeautyRoot);
@@ -1537,6 +1539,8 @@ public class SettingHook {
         dexView.setBaseOnView(masterView);
         WarnView warnView = new WarnView(context);
         warnView.setBaseOnView(masterView);
+        DebugView debugView = new DebugView(context);
+        debugView.setBaseOnView(masterView);
         BlackView blackView = new BlackView(context);
         blackView.setBaseOnView(masterView);
         ListenView listenView = new ListenView(context);
@@ -1565,6 +1569,7 @@ public class SettingHook {
         dialogRoot.addView(masterView);
         dialogRoot.addView(dexView);
         dialogRoot.addView(warnView);
+        dialogRoot.addView(debugView);
         dialogRoot.addView(blackView);
         dialogRoot.addView(listenView);
         dialogRoot.addView(fixCommentView);

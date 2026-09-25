@@ -2,8 +2,10 @@ package com.raincat.dolby_beta.hook;
 
 import android.content.Context;
 import android.os.Bundle;
+import android.text.TextUtils;
 
 import com.raincat.dolby_beta.helper.ClassHelper;
+import com.raincat.dolby_beta.helper.DebugLogger;
 import com.raincat.dolby_beta.helper.ExtraHelper;
 import com.raincat.dolby_beta.helper.UserHelper;
 
@@ -32,11 +34,22 @@ public class UserProfileHook {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     super.afterHookedMethod(param);
-                    String nickName = (String) param.args[0];
-                    if (nickName.equals("未登录") || nickName.length() == 0)
-                        return;
-                    if ((boolean) XposedHelpers.callMethod(param.thisObject, "isMe") && ExtraHelper.getExtraDate(ExtraHelper.USER_ID).equals("-1"))
-                        ExtraHelper.setExtraDate(ExtraHelper.USER_ID, XposedHelpers.callMethod(param.thisObject, "getUserId"));
+                    try {
+                        if (param.args == null || param.args.length == 0 || param.args[0] == null) return;
+                        String nickName = String.valueOf(param.args[0]);
+                        if (TextUtils.isEmpty(nickName) || "未登录".equals(nickName))
+                            return;
+                        Object isMeObj = XposedHelpers.callMethod(param.thisObject, "isMe");
+                        if (Boolean.TRUE.equals(isMeObj) && "-1".equals(ExtraHelper.getExtraDate(ExtraHelper.USER_ID))) {
+                            Object uid = XposedHelpers.callMethod(param.thisObject, "getUserId");
+                            if (uid != null) {
+                                ExtraHelper.setExtraDate(ExtraHelper.USER_ID, uid);
+                                DebugLogger.d("UserProfileHook", "Detected user id: " + uid);
+                            }
+                        }
+                    } catch (Throwable t) {
+                        DebugLogger.e("UserProfileHook", "Profile.setNickname error: " + t.getMessage(), t);
+                    }
                 }
             });
         }
@@ -48,10 +61,19 @@ public class UserProfileHook {
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     super.afterHookedMethod(param);
                     new Thread(() -> {
-                        if (ExtraHelper.getExtraDate(ExtraHelper.COOKIE).equals("-1"))
-                            ExtraHelper.setExtraDate(ExtraHelper.COOKIE, ClassHelper.Cookie.getCookie(context));
-                        if (ExtraHelper.getExtraDate(ExtraHelper.USER_ID).equals("-1"))
-                            UserHelper.getUserInfo();
+                        try {
+                            if ("-1".equals(ExtraHelper.getExtraDate(ExtraHelper.COOKIE))) {
+                                String cookie = ClassHelper.Cookie.getCookie(context);
+                                if (!TextUtils.isEmpty(cookie)) {
+                                    ExtraHelper.setExtraDate(ExtraHelper.COOKIE, cookie);
+                                }
+                            }
+                            if ("-1".equals(ExtraHelper.getExtraDate(ExtraHelper.USER_ID))) {
+                                UserHelper.getUserInfo();
+                            }
+                        } catch (Throwable t) {
+                            DebugLogger.e("UserProfileHook", "onResume background fetch error: " + t.getMessage(), t);
+                        }
                     }).start();
                 }
             });
@@ -64,7 +86,11 @@ public class UserProfileHook {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     super.afterHookedMethod(param);
-                    ExtraHelper.cleanUserData();
+                    try {
+                        ExtraHelper.cleanUserData();
+                    } catch (Throwable t) {
+                        DebugLogger.e("UserProfileHook", "LoginActivity onCreate error: " + t.getMessage(), t);
+                    }
                 }
             });
         }
@@ -76,8 +102,20 @@ public class UserProfileHook {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     super.afterHookedMethod(param);
-                    if ((int) param.args[0] == 5 && ExtraHelper.getExtraDate(ExtraHelper.LOVE_PLAY_LIST).equals("-1"))
-                        ExtraHelper.setExtraDate(ExtraHelper.LOVE_PLAY_LIST, XposedHelpers.callMethod(param.thisObject, "getId"));
+                    try {
+                        if (param.args != null && param.args.length > 0 && param.args[0] instanceof Integer) {
+                            int type = (Integer) param.args[0];
+                            if (type == 5 && "-1".equals(ExtraHelper.getExtraDate(ExtraHelper.LOVE_PLAY_LIST))) {
+                                Object id = XposedHelpers.callMethod(param.thisObject, "getId");
+                                if (id != null) {
+                                    ExtraHelper.setExtraDate(ExtraHelper.LOVE_PLAY_LIST, id);
+                                    DebugLogger.d("UserProfileHook", "Detected love playlist id: " + id);
+                                }
+                            }
+                        }
+                    } catch (Throwable t) {
+                        DebugLogger.e("UserProfileHook", "PlayList.setSpecialType error: " + t.getMessage(), t);
+                    }
                 }
             });
         }
