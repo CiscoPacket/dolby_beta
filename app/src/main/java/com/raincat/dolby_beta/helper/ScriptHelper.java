@@ -66,13 +66,14 @@ public class ScriptHelper {
     public static void initScript(Context context, boolean cover) {
         File unblockFile = new File(getScriptPath(context));
         neteaseContext = context;
-        if (cover || !unblockFile.exists() || !(BuildConfig.VERSION_CODE + "").equals(ExtraHelper.getExtraDate(ExtraHelper.APP_VERSION))) {
+        String scriptVerKey = BuildConfig.VERSION_CODE + "_xeapi_1";
+        if (cover || !unblockFile.exists() || !scriptVerKey.equals(ExtraHelper.getExtraDate(ExtraHelper.APP_VERSION))) {
             if (FileHelper.unzipFile(modulePath, getScriptPath(context), "assets", "UnblockNeteaseMusic.zip")) {
                 FileHelper.unzipFiles(getScriptPath(context) + "/UnblockNeteaseMusic.zip", getScriptPath(context));
             }
             Command auth = new Command(0, "cd " + getScriptPath(context), "chmod 0777 *");
             Tools.shell(auth);
-            ExtraHelper.setExtraDate(ExtraHelper.APP_VERSION, BuildConfig.VERSION_CODE);
+            ExtraHelper.setExtraDate(ExtraHelper.APP_VERSION, scriptVerKey);
         }
         if (TextUtils.isEmpty(nodeLibPath)) {
             nodeLibPath = TextUtils.isEmpty(modulePath) ? "" : modulePath.substring(0, modulePath.lastIndexOf('/'));
