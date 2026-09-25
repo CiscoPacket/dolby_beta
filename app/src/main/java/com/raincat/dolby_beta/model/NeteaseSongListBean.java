@@ -53,7 +53,7 @@ public class NeteaseSongListBean {
         private FreeTrialInfoBean freeTrialInfo;
         private String level;
         private String encodeType;
-        private int peak;
+        private double peak;
         private int time;
 
         public long getId() {
@@ -192,11 +192,11 @@ public class NeteaseSongListBean {
             this.encodeType = encodeType;
         }
 
-        public int getPeak() {
+        public double getPeak() {
             return peak;
         }
 
-        public void setPeak(int peak) {
+        public void setPeak(double peak) {
             this.peak = peak;
         }
 

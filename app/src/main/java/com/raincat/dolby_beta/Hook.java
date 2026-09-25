@@ -147,16 +147,21 @@ public class Hook {
                             context.registerReceiver(new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
-                                    if (msg_play_process_init_finish.equals(intent.getAction())) {
-                                        playProcessInit = true;
-                                        if (mainProcessInit && playProcessInit)
-                                            context.sendBroadcast(new Intent(msg_hook_play_process));
-                                    } else if (msg_send_notification.equals(intent.getAction())
-                                            && SettingHelper.getInstance().isEnable(SettingHelper.warn_key)) {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-                                            NotificationHelper.getInstance(context).sendUnLockNotification(context, intent.getIntExtra("code", 0x10),
-                                                    intent.getStringExtra("title"), intent.getStringExtra("title"), intent.getStringExtra("message"));
-                                        XposedBridge.log(intent.getStringExtra("title") + "：" + intent.getStringExtra("message"));
+                                    try {
+                                        if (intent == null) return;
+                                        if (msg_play_process_init_finish.equals(intent.getAction())) {
+                                            playProcessInit = true;
+                                            if (mainProcessInit && playProcessInit)
+                                                context.sendBroadcast(new Intent(msg_hook_play_process));
+                                        } else if (msg_send_notification.equals(intent.getAction())
+                                                && SettingHelper.getInstance().isEnable(SettingHelper.warn_key)) {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                                                NotificationHelper.getInstance(context).sendUnLockNotification(context, intent.getIntExtra("code", 0x10),
+                                                        intent.getStringExtra("title"), intent.getStringExtra("title"), intent.getStringExtra("message"));
+                                            XposedBridge.log(intent.getStringExtra("title") + "：" + intent.getStringExtra("message"));
+                                        }
+                                    } catch (Throwable t) {
+                                        DebugLogger.e("Hook", "BroadcastReceiver onReceive error: " + t.getMessage(), t);
                                     }
                                 }
                             }, intentFilter);

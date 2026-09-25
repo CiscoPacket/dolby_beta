@@ -3,7 +3,6 @@ package com.raincat.dolby_beta.helper;
 import com.google.gson.Gson;
 import com.ndktools.javamd5.core.MD5;
 import com.raincat.dolby_beta.model.CloudHeader;
-import com.raincat.dolby_beta.model.NeteaseSongListBean;
 import com.raincat.dolby_beta.net.Http;
 import com.raincat.dolby_beta.utils.NeteaseAES2;
 
@@ -38,32 +37,31 @@ public class EAPIHelper {
     public static String modifyPlayer(String original) {
         if (original == null || original.isEmpty()) return original;
         try {
-            NeteaseSongListBean listBean = gson.fromJson(original, NeteaseSongListBean.class);
-            if (listBean == null || listBean.getData() == null || listBean.getData().isEmpty()) {
-                return original;
-            }
-
-            NeteaseSongListBean modifyListBean = new NeteaseSongListBean();
-            modifyListBean.setCode(200);
-            modifyListBean.setData(new ArrayList<>());
-            for (NeteaseSongListBean.DataBean dataBean : listBean.getData()) {
-                if (dataBean == null) continue;
-                //flag与8非0为云盘歌曲
-                if ((dataBean.getFlag() & 0x8) == 0) {
-                    dataBean.setFee(0);
-                    dataBean.setFlag(0);
-                    dataBean.setPayed(0);
-                    dataBean.setFreeTrialInfo(null);
-                    if (dataBean.getUrl() != null && !dataBean.getUrl().isEmpty()) {
-                        dataBean.setCode(200);
-                        if (dataBean.getUrl().contains("126.net") && dataBean.getUrl().contains("?")) {
-                            dataBean.setUrl(dataBean.getUrl().substring(0, dataBean.getUrl().indexOf("?")));
+            JSONObject root = new JSONObject(original);
+            root.put("code", 200);
+            JSONArray data = root.optJSONArray("data");
+            if (data != null) {
+                for (int i = 0; i < data.length(); i++) {
+                    JSONObject item = data.optJSONObject(i);
+                    if (item == null) continue;
+                    // flag与8非0为云盘歌曲
+                    int flag = item.optInt("flag", 0);
+                    if ((flag & 0x8) == 0) {
+                        item.put("fee", 0);
+                        item.put("flag", 0);
+                        item.put("payed", 0);
+                        item.remove("freeTrialInfo");
+                        String url = item.optString("url", null);
+                        if (url != null && !url.isEmpty()) {
+                            item.put("code", 200);
+                            if (url.contains("126.net") && url.contains("?")) {
+                                item.put("url", url.substring(0, url.indexOf("?")));
+                            }
                         }
                     }
                 }
-                modifyListBean.getData().add(dataBean);
             }
-            return gson.toJson(modifyListBean);
+            return root.toString();
         } catch (Throwable t) {
             DebugLogger.e("EAPIHelper", "modifyPlayer error: " + t.getMessage(), t);
             return original;

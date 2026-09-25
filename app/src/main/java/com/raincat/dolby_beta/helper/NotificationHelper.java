@@ -49,36 +49,50 @@ public class NotificationHelper {
      */
     @RequiresApi(api = Build.VERSION_CODES.M)
     public void sendUnLockNotification(Context context, int appId, String ticker, String title, String content) {
-        Notification.Builder builder = new Notification.Builder(context);
-        ApplicationInfo applicationInfo = context.getApplicationInfo();
-        Drawable drawable = applicationInfo.loadIcon(context.getPackageManager());
-        Bitmap bitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(),
-                drawable.getOpacity() != PixelFormat.OPAQUE ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565);
-        Canvas canvas = new Canvas(bitmap);
-        drawable.setBounds(0, 0, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
-        drawable.draw(canvas);
-        Icon icon = Icon.createWithBitmap(bitmap);
-        builder.setSmallIcon(icon)
-                .setContentIntent(PendingIntent.getActivity(context, 0, new Intent(), 0))
-                .setContentTitle(title)
-                .setTicker(ticker)
-                .setAutoCancel(true)
-                .setDefaults(Notification.DEFAULT_LIGHTS);
-        if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel notificationChannel = new NotificationChannel(context.getPackageName() + appId, "UnblockNeteaseMusic", NotificationManager.IMPORTANCE_HIGH);
-            notificationChannel.enableLights(true);
-            notificationChannel.enableVibration(true);
-            notificationChannel.setVibrationPattern(new long[]{200L, 200L, 200L, 200L});
-            notificationChannel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), Notification.AUDIO_ATTRIBUTES_DEFAULT);
-            builder.setChannelId(context.getPackageName() + appId);
-            mNotificationManager.createNotificationChannel(notificationChannel);
-        } else {
-            builder.setVibrate(new long[]{200L, 200L, 200L, 200L});
-            builder.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
-        }
+        if (context == null) return;
+        try {
+            if (mNotificationManager == null) {
+                mNotificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            }
+            if (mNotificationManager == null) return;
 
-        Notification notification = new Notification.BigTextStyle(builder).bigText(content).build();
-        mNotificationManager.notify(appId, notification);
+            Notification.Builder builder = new Notification.Builder(context);
+            ApplicationInfo applicationInfo = context.getApplicationInfo();
+            Drawable drawable = applicationInfo.loadIcon(context.getPackageManager());
+            Bitmap bitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(),
+                    drawable.getOpacity() != PixelFormat.OPAQUE ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565);
+            Canvas canvas = new Canvas(bitmap);
+            drawable.setBounds(0, 0, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
+            drawable.draw(canvas);
+            Icon icon = Icon.createWithBitmap(bitmap);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+            builder.setSmallIcon(icon)
+                    .setContentIntent(PendingIntent.getActivity(context, 0, new Intent(), flags))
+                    .setContentTitle(title)
+                    .setTicker(ticker)
+                    .setAutoCancel(true)
+                    .setDefaults(Notification.DEFAULT_LIGHTS);
+            if (Build.VERSION.SDK_INT >= 26) {
+                NotificationChannel notificationChannel = new NotificationChannel(context.getPackageName() + appId, "UnblockNeteaseMusic", NotificationManager.IMPORTANCE_HIGH);
+                notificationChannel.enableLights(true);
+                notificationChannel.enableVibration(true);
+                notificationChannel.setVibrationPattern(new long[]{200L, 200L, 200L, 200L});
+                notificationChannel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), Notification.AUDIO_ATTRIBUTES_DEFAULT);
+                builder.setChannelId(context.getPackageName() + appId);
+                mNotificationManager.createNotificationChannel(notificationChannel);
+            } else {
+                builder.setVibrate(new long[]{200L, 200L, 200L, 200L});
+                builder.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
+            }
+
+            Notification notification = new Notification.BigTextStyle(builder).bigText(content).build();
+            mNotificationManager.notify(appId, notification);
+        } catch (Throwable t) {
+            DebugLogger.e("NotificationHelper", "sendUnLockNotification error: " + t.getMessage(), t);
+        }
     }
 
     /**
