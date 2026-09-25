@@ -874,11 +874,39 @@ public class ClassHelper {
             if (getResultMethod == null && clazz != null) {
                 try {
                     List<Method> methodList = Arrays.asList(clazz.getDeclaredMethods());
+                    // 1. 优先查找声明抛出 2 个受检异常且无参的方法 (标准 NetEase HttpResponse.b)
                     getResultMethod = Stream.of(methodList)
-                            .filter(m -> m.getExceptionTypes().length == 2)
+                            .filter(m -> m.getExceptionTypes().length == 2 && m.getParameterTypes().length == 0)
                             .findFirst()
                             .orElse(null);
+
+                    // 2. 备用策略：查找无参且名为 b 的方法
+                    if (getResultMethod == null) {
+                        getResultMethod = Stream.of(methodList)
+                                .filter(m -> "b".equals(m.getName()) && m.getParameterTypes().length == 0)
+                                .findFirst()
+                                .orElse(null);
+                    }
+
+                    // 3. 兜底策略：查找无参且返回 Object 且非基础 Object 方法
+                    if (getResultMethod == null) {
+                        getResultMethod = Stream.of(methodList)
+                                .filter(m -> m.getParameterTypes().length == 0
+                                        && m.getReturnType() == Object.class
+                                        && !"getClass".equals(m.getName())
+                                        && !"hashCode".equals(m.getName())
+                                        && !"clone".equals(m.getName()))
+                                .findFirst()
+                                .orElse(null);
+                    }
+
+                    if (getResultMethod != null) {
+                        DebugLogger.d("ClassHelper", "Found HttpResponse getResultMethod: " + getResultMethod.getName());
+                    } else {
+                        DebugLogger.e("ClassHelper", "Failed to find HttpResponse getResultMethod in " + clazz.getName(), null);
+                    }
                 } catch (Exception e) {
+                    DebugLogger.e("ClassHelper", "getResultMethod error: " + e.getMessage(), e);
                     MessageHelper.sendNotification(context, MessageHelper.coreClassNotFoundCode);
                 }
             }

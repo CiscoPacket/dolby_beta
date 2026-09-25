@@ -25,6 +25,8 @@ import java.io.File;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -88,7 +90,7 @@ public class PlayerActivityHook {
             }
         }
 
-        // 2. 黑胶唱片 (PlayerDiscViewFlipper) 自动隐藏唱片圈并放大专辑封面
+        // 2. 黑胶唱片 (PlayerDiscViewFlipper & PlayerDSLVinylView) 自动隐藏唱片圈并放大专辑封面
         Class<?> discFlipperClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.PlayerDiscViewFlipper", context.getClassLoader());
         if (discFlipperClass != null) {
             try {
@@ -118,6 +120,30 @@ public class PlayerActivityHook {
             }
         }
 
+        Class<?> playerDslVinylClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.PlayerDSLVinylView", context.getClassLoader());
+        if (playerDslVinylClass != null) {
+            XC_MethodHook dslVinylHook = new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_black_hide_key)) {
+                        hideDslVinylView((View) param.thisObject);
+                    }
+                }
+            };
+            try {
+                XposedBridge.hookAllConstructors(playerDslVinylClass, dslVinylHook);
+            } catch (Throwable ignored) {
+            }
+            for (Method m : playerDslVinylClass.getDeclaredMethods()) {
+                if ("onBindData".equals(m.getName())) {
+                    try {
+                        XposedBridge.hookMethod(m, dslVinylHook);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+        }
+
         // 3. 黑胶停转 (RotationRelativeLayout & AnimationHolder)
         XC_MethodHook stopRotationHook = new XC_MethodHook() {
             @Override
@@ -128,39 +154,71 @@ public class PlayerActivityHook {
             }
         };
 
-        Class<?> rotationLayoutClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.RotationRelativeLayout", context.getClassLoader());
-        if (rotationLayoutClass != null) {
-            try {
-                XposedHelpers.findAndHookMethod(rotationLayoutClass, "prepareAnimation", stopRotationHook);
-            } catch (Throwable ignored) {
+        XC_MethodHook zeroRotationHook = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_rotation_key)) {
+                    if (param.args != null && param.args.length > 0 && param.args[0] instanceof Number) {
+                        param.args[0] = 0.0f;
+                    }
+                }
             }
-            try {
-                XposedHelpers.findAndHookMethod(rotationLayoutClass, "start", stopRotationHook);
-            } catch (Throwable ignored) {
+        };
+
+        String[] rotationClasses = new String[]{
+                "com.netease.cloudmusic.ui.RotationRelativeLayout",
+                "com.netease.cloudmusic.module.state.RotationRelativeLayout"
+        };
+        for (String rName : rotationClasses) {
+            Class<?> rCls = XposedHelpers.findClassIfExists(rName, context.getClassLoader());
+            if (rCls != null) {
+                try {
+                    XposedHelpers.findAndHookMethod(rCls, "prepareAnimation", stopRotationHook);
+                } catch (Throwable ignored) {
+                }
+                try {
+                    XposedHelpers.findAndHookMethod(rCls, "start", stopRotationHook);
+                } catch (Throwable ignored) {
+                }
+                try {
+                    XposedHelpers.findAndHookMethod(rCls, "setRotation", float.class, zeroRotationHook);
+                } catch (Throwable ignored) {
+                }
             }
         }
 
-        Class<?> animHolderClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.RotationRelativeLayout$AnimationHolder", context.getClassLoader());
-        if (animHolderClass != null) {
-            try {
-                XposedHelpers.findAndHookMethod(animHolderClass, "prepareAnimation", stopRotationHook);
-            } catch (Throwable ignored) {
-            }
-            try {
-                XposedHelpers.findAndHookMethod(animHolderClass, "start", stopRotationHook);
-            } catch (Throwable ignored) {
-            }
-            try {
-                XposedHelpers.findAndHookMethod(animHolderClass, "startAnimator", stopRotationHook);
-            } catch (Throwable ignored) {
-            }
-        }
-
-        Class<?> rotSubClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.RotationRelativeLayout$a", context.getClassLoader());
-        if (rotSubClass != null) {
-            try {
-                XposedHelpers.findAndHookMethod(rotSubClass, "b", stopRotationHook);
-            } catch (Throwable ignored) {
+        String[] animHolderClasses = new String[]{
+                "com.netease.cloudmusic.ui.RotationRelativeLayout$AnimationHolder",
+                "com.netease.cloudmusic.module.state.RotationRelativeLayout$a"
+        };
+        for (String ahName : animHolderClasses) {
+            Class<?> ahCls = XposedHelpers.findClassIfExists(ahName, context.getClassLoader());
+            if (ahCls != null) {
+                try {
+                    XposedHelpers.findAndHookMethod(ahCls, "prepareAnimation", stopRotationHook);
+                } catch (Throwable ignored) {
+                }
+                try {
+                    XposedHelpers.findAndHookMethod(ahCls, "start", stopRotationHook);
+                } catch (Throwable ignored) {
+                }
+                try {
+                    XposedHelpers.findAndHookMethod(ahCls, "startAnimator", stopRotationHook);
+                } catch (Throwable ignored) {
+                }
+                try {
+                    XposedHelpers.findAndHookMethod(ahCls, "onAnimationUpdate", android.animation.ValueAnimator.class, stopRotationHook);
+                } catch (Throwable ignored) {
+                }
+                for (Method m : ahCls.getDeclaredMethods()) {
+                    String mn = m.getName();
+                    if ("resetRotation".equals(mn) || "setInitialRotation".equals(mn) || "b".equals(mn)) {
+                        try {
+                            XposedBridge.hookMethod(m, zeroRotationHook);
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
             }
         }
 
@@ -386,47 +444,93 @@ public class PlayerActivityHook {
         }
     }
 
+    private static void hideDslVinylView(View view) {
+        if (view == null) return;
+        try {
+            View maskBottom = (View) XposedHelpers.getObjectField(view, "maskBottomView");
+            if (maskBottom != null) maskBottom.setVisibility(View.GONE);
+        } catch (Throwable ignored) {
+        }
+        try {
+            View maskTop = (View) XposedHelpers.getObjectField(view, "maskTopView");
+            if (maskTop != null) maskTop.setVisibility(View.GONE);
+        } catch (Throwable ignored) {
+        }
+        try {
+            ImageView iv = (ImageView) XposedHelpers.getObjectField(view, "imageView");
+            if (iv != null) {
+                ViewGroup.LayoutParams lp = iv.getLayoutParams();
+                if (lp != null) {
+                    lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                    lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                    iv.setLayoutParams(lp);
+                }
+                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static void hideVinylDisc(ViewGroup flipper) {
-        if (flipper == null) return;
+        if (flipper == null || !SettingHelper.getInstance().isEnable(SettingHelper.beauty_black_hide_key)) return;
         for (int i = 0; i < flipper.getChildCount(); i++) {
             View child = flipper.getChildAt(i);
             if (!(child instanceof ViewGroup)) continue;
             ViewGroup rotationLayout = (ViewGroup) child;
-            View coverView = null, imageView = null;
-            for (int j = 0; j < rotationLayout.getChildCount(); j++) {
-                View subChild = rotationLayout.getChildAt(j);
-                String name = subChild.getClass().getName();
-                if (name.contains("android.widget.ImageView") || name.equals("android.widget.ImageView")) {
-                    coverView = subChild;
-                } else if (subChild instanceof ImageView) {
-                    imageView = subChild;
+
+            // 1. 递归检测 DSL Vinyl View
+            checkAndHideDSLVinyl(rotationLayout);
+
+            // 2. 传统双层或多层 ImageView 处理
+            List<ImageView> imageViews = new ArrayList<>();
+            findImageViews(rotationLayout, imageViews);
+            if (imageViews.size() >= 2) {
+                // 通常第一个是黑胶外圈底图 (或者尺寸较大的底盘)，第二个是封面
+                ImageView first = imageViews.get(0);
+                ImageView second = imageViews.get(1);
+
+                // 判断谁是外圈底图
+                ImageView coverDisc = first;
+                ImageView albumImage = second;
+                if (first.getWidth() < second.getWidth() && first.getWidth() > 0) {
+                    coverDisc = second;
+                    albumImage = first;
                 }
-            }
-            if (coverView != null && imageView != null) {
-                final View finalCover = coverView;
-                final View finalImage = imageView;
-                finalCover.setVisibility(View.INVISIBLE);
-                ViewGroup.LayoutParams lp = finalImage.getLayoutParams();
+
+                coverDisc.setVisibility(View.INVISIBLE);
+                ViewGroup.LayoutParams lp = albumImage.getLayoutParams();
                 if (lp != null) {
-                    int w = finalCover.getWidth();
-                    int h = finalCover.getHeight();
-                    if (w > 0 && h > 0) {
-                        lp.width = w;
-                        lp.height = h;
-                        finalImage.setLayoutParams(lp);
-                    } else {
-                        finalCover.post(() -> {
-                            if (finalCover.getWidth() > 0 && finalCover.getHeight() > 0) {
-                                ViewGroup.LayoutParams innerLp = finalImage.getLayoutParams();
-                                if (innerLp != null) {
-                                    innerLp.width = finalCover.getWidth();
-                                    innerLp.height = finalCover.getHeight();
-                                    finalImage.setLayoutParams(innerLp);
-                                }
-                            }
-                        });
-                    }
+                    lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                    lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                    albumImage.setLayoutParams(lp);
                 }
+                albumImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            }
+        }
+    }
+
+    private static void checkAndHideDSLVinyl(ViewGroup root) {
+        if (root == null) return;
+        if (root.getClass().getName().contains("PlayerDSLVinylView")) {
+            hideDslVinylView(root);
+            return;
+        }
+        for (int i = 0; i < root.getChildCount(); i++) {
+            View c = root.getChildAt(i);
+            if (c instanceof ViewGroup) {
+                checkAndHideDSLVinyl((ViewGroup) c);
+            }
+        }
+    }
+
+    private static void findImageViews(ViewGroup root, List<ImageView> out) {
+        if (root == null || out == null) return;
+        for (int i = 0; i < root.getChildCount(); i++) {
+            View c = root.getChildAt(i);
+            if (c instanceof ImageView) {
+                out.add((ImageView) c);
+            } else if (c instanceof ViewGroup) {
+                findImageViews((ViewGroup) c, out);
             }
         }
     }

@@ -10,6 +10,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -30,7 +31,7 @@ public class HideTabHook {
         if (versionCode < 138)
             return;
 
-        // 1. 适配新版网易云 (9.x 统一Tab数据源提供者 th0.o.Z1)
+        // 1. 适配新版网易云 (9.x 统一Tab数据源提供者 th0.o)
         Class<?> th0Class = XposedHelpers.findClassIfExists("th0.o", context.getClassLoader());
         if (th0Class != null) {
             try {
@@ -52,6 +53,49 @@ public class HideTabHook {
                 });
             } catch (Throwable t) {
                 XposedBridge.log("[dolby_beta] hook th0.o.Z1 failed: " + t);
+            }
+
+            // Hook 所有返回 CopyOnWriteArrayList / List 的数据生成方法 (如 p2, W1)
+            for (Method m : th0Class.getDeclaredMethods()) {
+                if (List.class.isAssignableFrom(m.getReturnType())) {
+                    try {
+                        XposedBridge.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                                    return;
+                                Object res = param.getResult();
+                                if (res instanceof List) {
+                                    List<?> list = (List<?>) res;
+                                    if (list.size() > 2) {
+                                        param.setResult(new CopyOnWriteArrayList<>(list.subList(0, 2)));
+                                    }
+                                }
+                            }
+                        });
+                    } catch (Throwable ignored) {
+                    }
+                }
+                // Hook 接收 List 入参并保存的方法 (如 l2, m2)
+                Class<?>[] pTypes = m.getParameterTypes();
+                if (pTypes.length > 0 && List.class.isAssignableFrom(pTypes[0])) {
+                    try {
+                        XposedBridge.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                                    return;
+                                if (param.args != null && param.args.length > 0 && param.args[0] instanceof List) {
+                                    List<?> list = (List<?>) param.args[0];
+                                    if (list.size() > 2) {
+                                        param.args[0] = new ArrayList<>(list.subList(0, 2));
+                                    }
+                                }
+                            }
+                        });
+                    } catch (Throwable ignored) {
+                    }
+                }
             }
         }
 

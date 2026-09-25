@@ -101,7 +101,7 @@ public class SettingHelper {
     public static final String proxy_flac_sub = "使用外部音源时优先获取无损音质，但并不是100%能获取到无损音质";
 
     public static final String local_vip_key = "β_local_vip_key";
-    public static final String local_vip_title = "脚本本地VIP";
+    public static final String local_vip_title = "代理端本地VIP (UNM)";
     public static final String local_vip_sub = "UnblockNeteaseMusic 的 ENABLE_LOCAL_VIP，与「本地黑胶」不同。可选关闭 / CVIP / SVIP";
     public static final String local_vip_default = "off";
 
