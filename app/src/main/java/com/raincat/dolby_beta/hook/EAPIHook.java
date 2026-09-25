@@ -74,14 +74,16 @@ public class EAPIHook {
                     original = EAPIHelper.modifyManipulate(ClassHelper.HttpParams.getParams(context, eapi), original);
                 } else if (path.contains("song/like")) {
                     original = EAPIHelper.modifyLike(ClassHelper.HttpParams.getParams(context, eapi), original);
-                } else if (path.contains("usertool/sound") || path.contains("sound/mobile") || path.contains("sound/twinkle") || path.contains("sound/material") || path.contains("page=audio_effect")) {
+                } else if (path.contains("usertool/sound") || path.contains("sound/mobile") || path.contains("sound/twinkle") || path.contains("sound/material") || path.contains("page=audio_effect") || path.contains("audio/effect") || path.contains("sound/effect") || path.contains("sound/info")) {
                     original = EAPIHelper.modifyEffect(original);
                 } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && (path.contains("vip/info") || path.contains("vip-membership"))) {
                     original = EAPIHelper.modifyVipInfo(original);
-                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && (path.contains("account/get") || path.contains("user/info"))) {
+                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && (path.contains("account/get") || path.contains("user/info") || path.contains("user/detail") || path.contains("user/profile"))) {
                     original = EAPIHelper.modifyAccount(original);
-                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && path.contains("vipauth/app/auth/query")) {
+                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && (path.contains("vipauth") || path.contains("auth/query"))) {
                     original = EAPIHelper.modifyVipAuth(original);
+                } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && (path.contains("playermode") || path.contains("player/mode") || path.contains("vinyl"))) {
+                    original = EAPIHelper.modifyPlayerMode(original);
                 } else if (path.contains("batch")) {
                     if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
                         original = EAPIHelper.modifyBatchVip(original);

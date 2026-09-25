@@ -21,7 +21,7 @@ import static de.robv.android.xposed.XposedHelpers.findClassIfExists;
  *     author : RainCat
  *     time   : 2019/10/26
  *     desc   : 本地黑胶SVIP、音质、音效与播放器样式解锁
- *     version: 2.0
+ *     version: 2.1
  * </pre>
  */
 
@@ -30,20 +30,53 @@ public class BlackHook {
         ClassLoader classLoader = context.getClassLoader();
         long expireTime = System.currentTimeMillis() + 31536000000L;
 
+        Class<?> userPrivilegeClass = findClassIfExists("com.netease.cloudmusic.meta.virtual.UserPrivilege", classLoader);
+        Class<?> redPlusClass = findClassIfExists("com.netease.cloudmusic.meta.virtual.RedPlus", classLoader);
+
         // 1. Profile (com.netease.cloudmusic.meta.Profile)
         Class<?> profileClass = findClassIfExists("com.netease.cloudmusic.meta.Profile", classLoader);
         if (profileClass != null) {
+            try {
+                findAndHookMethod(profileClass, "getUserType", XC_MethodReplacement.returnConstant(1));
+            } catch (Throwable ignored) {}
+
             try {
                 findAndHookMethod(profileClass, "getUserPrivilege", new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         super.afterHookedMethod(param);
-                        if (param.getResult() == null) {
-                            Class<?> upClz = findClassIfExists("com.netease.cloudmusic.meta.virtual.UserPrivilege", classLoader);
-                            if (upClz != null) {
+                        Object up = param.getResult();
+                        if (up == null && userPrivilegeClass != null) {
+                            try {
+                                up = XposedHelpers.callStaticMethod(userPrivilegeClass, "createDefaultRights", 0L);
+                            } catch (Throwable t) {
+                                try { up = userPrivilegeClass.newInstance(); } catch (Throwable ignored) {}
+                            }
+                            param.setResult(up);
+                        }
+                        if (up != null) {
+                            try { XposedHelpers.callMethod(up, "setBlackVipRightsForProfileList", true); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(up, "setMusicPackageRightsForProfileList", true); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(up, "setRedVipLevel", 9); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(up, "setRedVipAnnualCount", 1); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(up, "setBlackVipType", 100); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(up, "setBlackVipExpireTime", expireTime); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(up, "setMusicPackageType", 220); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(up, "setMusicPackageExpireTime", expireTime); } catch (Throwable ignored) {}
+
+                            Object rp = null;
+                            try { rp = XposedHelpers.callMethod(up, "getRedPlus"); } catch (Throwable ignored) {}
+                            if (rp == null && redPlusClass != null) {
                                 try {
-                                    param.setResult(upClz.newInstance());
+                                    rp = redPlusClass.newInstance();
+                                    XposedHelpers.callMethod(up, "setRedPlus", rp);
                                 } catch (Throwable ignored) {}
+                            }
+                            if (rp != null) {
+                                try { XposedHelpers.setIntField(rp, "vipCode", 100); } catch (Throwable ignored) {}
+                                try { XposedHelpers.setIntField(rp, "vipLevel", 9); } catch (Throwable ignored) {}
+                                try { XposedHelpers.setLongField(rp, "expireTime", expireTime); } catch (Throwable ignored) {}
+                                try { XposedHelpers.setBooleanField(rp, "isSign", true); } catch (Throwable ignored) {}
                             }
                         }
                     }
@@ -66,10 +99,10 @@ public class BlackHook {
                             }
                         }
                         if (myVipInfo != null) {
-                            try {
-                                XposedHelpers.callMethod(myVipInfo, "setVipHintStatus", 1);
-                                XposedHelpers.callMethod(myVipInfo, "setButtonText", "黑胶SVIP");
-                            } catch (Throwable ignored) {}
+                            try { XposedHelpers.setIntField(myVipInfo, "vipHintStatus", 1); } catch (Throwable ignored) {}
+                            try { XposedHelpers.setObjectField(myVipInfo, "buttonText", "黑胶SVIP"); } catch (Throwable ignored) {}
+                            try { XposedHelpers.setObjectField(myVipInfo, "jumpUrl", "https://music.163.com"); } catch (Throwable ignored) {}
+                            try { XposedHelpers.setObjectField(myVipInfo, "logContext", ""); } catch (Throwable ignored) {}
                         }
                     }
                 });
@@ -77,7 +110,6 @@ public class BlackHook {
         }
 
         // 2. UserPrivilege (com.netease.cloudmusic.meta.virtual.UserPrivilege)
-        Class<?> userPrivilegeClass = findClassIfExists("com.netease.cloudmusic.meta.virtual.UserPrivilege", classLoader);
         if (userPrivilegeClass != null) {
             XC_MethodHook fromJsonHook = new XC_MethodHook() {
                 @Override
@@ -135,21 +167,23 @@ public class BlackHook {
             try { findAndHookMethod(userPrivilegeClass, "getMusicPackageType", XC_MethodReplacement.returnConstant(220)); } catch (Throwable ignored) {}
             try { findAndHookMethod(userPrivilegeClass, "getMusicPackageExpireTime", XC_MethodReplacement.returnConstant(expireTime)); } catch (Throwable ignored) {}
 
-            Class<?> redPlusClass = findClassIfExists("com.netease.cloudmusic.meta.virtual.RedPlus", classLoader);
             try {
                 findAndHookMethod(userPrivilegeClass, "getRedPlus", new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         super.afterHookedMethod(param);
-                        if (param.getResult() == null && redPlusClass != null) {
+                        Object rp = param.getResult();
+                        if (rp == null && redPlusClass != null) {
                             try {
-                                Object rp = redPlusClass.newInstance();
-                                XposedHelpers.callMethod(rp, "setVipCode", 100);
-                                XposedHelpers.callMethod(rp, "setVipLevel", 9);
-                                XposedHelpers.callMethod(rp, "setExpireTime", expireTime);
-                                XposedHelpers.callMethod(rp, "setSign", true);
+                                rp = redPlusClass.newInstance();
                                 param.setResult(rp);
                             } catch (Throwable ignored) {}
+                        }
+                        if (rp != null) {
+                            try { XposedHelpers.setIntField(rp, "vipCode", 100); } catch (Throwable ignored) {}
+                            try { XposedHelpers.setIntField(rp, "vipLevel", 9); } catch (Throwable ignored) {}
+                            try { XposedHelpers.setLongField(rp, "expireTime", expireTime); } catch (Throwable ignored) {}
+                            try { XposedHelpers.setBooleanField(rp, "isSign", true); } catch (Throwable ignored) {}
                         }
                     }
                 });
@@ -157,7 +191,6 @@ public class BlackHook {
         }
 
         // 3. RedPlus (com.netease.cloudmusic.meta.virtual.RedPlus)
-        Class<?> redPlusClass = findClassIfExists("com.netease.cloudmusic.meta.virtual.RedPlus", classLoader);
         if (redPlusClass != null) {
             try { findAndHookMethod(redPlusClass, "getVipCode", XC_MethodReplacement.returnConstant(100)); } catch (Throwable ignored) {}
             try { findAndHookMethod(redPlusClass, "getVipLevel", XC_MethodReplacement.returnConstant(9)); } catch (Throwable ignored) {}
@@ -165,60 +198,43 @@ public class BlackHook {
             try { findAndHookMethod(redPlusClass, "isIsSign", XC_MethodReplacement.returnConstant(true)); } catch (Throwable ignored) {}
         }
 
-        // 4. Moshi 响应模型 (UserPrivilegeDO & RightsDO)
-        Class<?> rightsDOClass = findClassIfExists("com.netease.cloudmusic.meta.response.RightsDO", classLoader);
-        if (rightsDOClass != null) {
-            try { findAndHookMethod(rightsDOClass, "getRights", XC_MethodReplacement.returnConstant(true)); } catch (Throwable ignored) {}
-            try { findAndHookMethod(rightsDOClass, "getVipCode", XC_MethodReplacement.returnConstant(100)); } catch (Throwable ignored) {}
-        }
-
+        // 4. Moshi 响应模型 (UserPrivilegeDO & UserPrivilegeDO$Companion)
         Class<?> userPrivilegeDOClass = findClassIfExists("com.netease.cloudmusic.meta.response.UserPrivilegeDO", classLoader);
         if (userPrivilegeDOClass != null) {
             try { findAndHookMethod(userPrivilegeDOClass, "getRedVipLevel", XC_MethodReplacement.returnConstant(9)); } catch (Throwable ignored) {}
             try { findAndHookMethod(userPrivilegeDOClass, "getRedVipAnnualCount", XC_MethodReplacement.returnConstant(1)); } catch (Throwable ignored) {}
-            if (rightsDOClass != null) {
-                try {
-                    findAndHookMethod(userPrivilegeDOClass, "getRedplus", new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                            super.afterHookedMethod(param);
-                            if (param.getResult() == null) {
-                                try {
-                                    param.setResult(XposedHelpers.newInstance(rightsDOClass, true, 100));
-                                } catch (Throwable t) {
-                                    try { param.setResult(rightsDOClass.newInstance()); } catch (Throwable ignored) {}
-                                }
-                            }
-                        }
-                    });
-                } catch (Throwable ignored) {}
 
+            Class<?> companionClass = findClassIfExists("com.netease.cloudmusic.meta.response.UserPrivilegeDO$Companion", classLoader);
+            if (companionClass != null) {
                 try {
-                    findAndHookMethod(userPrivilegeDOClass, "getAssociator", new XC_MethodHook() {
+                    findAndHookMethod(companionClass, "fromJsonForProfileList", userPrivilegeDOClass, long.class, new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                             super.afterHookedMethod(param);
-                            if (param.getResult() == null) {
-                                try {
-                                    param.setResult(XposedHelpers.newInstance(rightsDOClass, true, 100));
-                                } catch (Throwable t) {
-                                    try { param.setResult(rightsDOClass.newInstance()); } catch (Throwable ignored) {}
-                                }
-                            }
-                        }
-                    });
-                } catch (Throwable ignored) {}
+                            Object up = param.getResult();
+                            if (up != null) {
+                                try { XposedHelpers.callMethod(up, "setBlackVipRightsForProfileList", true); } catch (Throwable ignored) {}
+                                try { XposedHelpers.callMethod(up, "setMusicPackageRightsForProfileList", true); } catch (Throwable ignored) {}
+                                try { XposedHelpers.callMethod(up, "setRedVipLevel", 9); } catch (Throwable ignored) {}
+                                try { XposedHelpers.callMethod(up, "setRedVipAnnualCount", 1); } catch (Throwable ignored) {}
+                                try { XposedHelpers.callMethod(up, "setBlackVipType", 100); } catch (Throwable ignored) {}
+                                try { XposedHelpers.callMethod(up, "setBlackVipExpireTime", expireTime); } catch (Throwable ignored) {}
+                                try { XposedHelpers.callMethod(up, "setMusicPackageType", 220); } catch (Throwable ignored) {}
+                                try { XposedHelpers.callMethod(up, "setMusicPackageExpireTime", expireTime); } catch (Throwable ignored) {}
 
-                try {
-                    findAndHookMethod(userPrivilegeDOClass, "getMusicPackage", new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                            super.afterHookedMethod(param);
-                            if (param.getResult() == null) {
-                                try {
-                                    param.setResult(XposedHelpers.newInstance(rightsDOClass, true, 220));
-                                } catch (Throwable t) {
-                                    try { param.setResult(rightsDOClass.newInstance()); } catch (Throwable ignored) {}
+                                Object rp = null;
+                                try { rp = XposedHelpers.callMethod(up, "getRedPlus"); } catch (Throwable ignored) {}
+                                if (rp == null && redPlusClass != null) {
+                                    try {
+                                        rp = redPlusClass.newInstance();
+                                        XposedHelpers.callMethod(up, "setRedPlus", rp);
+                                    } catch (Throwable ignored) {}
+                                }
+                                if (rp != null) {
+                                    try { XposedHelpers.setIntField(rp, "vipCode", 100); } catch (Throwable ignored) {}
+                                    try { XposedHelpers.setIntField(rp, "vipLevel", 9); } catch (Throwable ignored) {}
+                                    try { XposedHelpers.setLongField(rp, "expireTime", expireTime); } catch (Throwable ignored) {}
+                                    try { XposedHelpers.setBooleanField(rp, "isSign", true); } catch (Throwable ignored) {}
                                 }
                             }
                         }
@@ -235,7 +251,7 @@ public class BlackHook {
             try { findAndHookMethod(liveProfileClass, "isWhateverVip", XC_MethodReplacement.returnConstant(true)); } catch (Throwable ignored) {}
         }
 
-        // 6. 音质控制与解锁 (AudioQualityVO & BottomSheet & Privileges)
+        // 6. 音质控制与解锁 (AudioQualityVO, SongRateChargeInfo, ResourcePrivilege, SongPrivilegeDO)
         Class<?> audioQualityVOClass = findClassIfExists("com.netease.cloudmusic.meta.audio.AudioQualityVO", classLoader);
         if (audioQualityVOClass != null) {
             try { findAndHookMethod(audioQualityVOClass, "isVip", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
@@ -244,15 +260,16 @@ public class BlackHook {
             try { findAndHookMethod(audioQualityVOClass, "getDisable", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
         }
 
+        Class<?> chargeInfoClass = findClassIfExists("com.netease.cloudmusic.meta.SongRateChargeSetting$SongRateChargeInfo", classLoader);
+        if (chargeInfoClass != null) {
+            try { findAndHookMethod(chargeInfoClass, "isToCashier", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(chargeInfoClass, "getChargeType", XC_MethodReplacement.returnConstant(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(chargeInfoClass, "getChargeUrl", XC_MethodReplacement.returnConstant("")); } catch (Throwable ignored) {}
+        }
+
         Class<?> aqTagExtraInfoClass = findClassIfExists("com.netease.cloudmusic.meta.AudioQualityTagExtraInfo", classLoader);
         if (aqTagExtraInfoClass != null) {
             try { findAndHookMethod(aqTagExtraInfoClass, "isVipQuality", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
-        }
-
-        Class<?> aqBottomSheetClass = findClassIfExists("com.netease.cloudmusic.ui.bottomsheet.AudioQualityBottomSheet", classLoader);
-        if (aqBottomSheetClass != null) {
-            try { findAndHookMethod(aqBottomSheetClass, "isAlbumPayed", XC_MethodReplacement.returnConstant(true)); } catch (Throwable ignored) {}
-            try { findAndHookMethod(aqBottomSheetClass, "isPermanentPayed", XC_MethodReplacement.returnConstant(true)); } catch (Throwable ignored) {}
         }
 
         Class<?> resPrivilegeClass = findClassIfExists("com.netease.cloudmusic.meta.virtual.ResourcePrivilege", classLoader);
@@ -264,15 +281,6 @@ public class BlackHook {
             try { findAndHookMethod(resPrivilegeClass, "getFee", XC_MethodReplacement.returnConstant(0)); } catch (Throwable ignored) {}
             try { findAndHookMethod(resPrivilegeClass, "getPayed", XC_MethodReplacement.returnConstant(0)); } catch (Throwable ignored) {}
             try { XposedBridge.hookAllMethods(resPrivilegeClass, "isFee", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
-            try {
-                findAndHookMethod(resPrivilegeClass, "getFlag", new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                        super.afterHookedMethod(param);
-                        param.setResult(((int) param.getResult() & 0x8) == 0 ? 0 : param.getResult());
-                    }
-                });
-            } catch (Throwable ignored) {}
         }
 
         Class<?> songPrivilegeClass = findClassIfExists("com.netease.cloudmusic.meta.virtual.SongPrivilege", classLoader);
@@ -333,10 +341,15 @@ public class BlackHook {
             try { findAndHookMethod(twinkleItemClass, "getSoundType", XC_MethodReplacement.returnConstant(0)); } catch (Throwable ignored) {}
         }
 
-        // 8. 播放器样式与动效黑胶 (LunaVipCountDownView & ThemeInfo)
+        // 8. 播放器样式与动效黑胶 (LunaVipCountDownView, PlayerModeUseInfo, ThemeInfo)
         Class<?> lunaCountDownClass = findClassIfExists("com.netease.cloudmusic.ui.hint.playermode.LunaVipCountDownView", classLoader);
         if (lunaCountDownClass != null) {
-            try { findAndHookMethod(lunaCountDownClass, "checkIsVipLimit", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(lunaCountDownClass, "checkIsVipLimit", XC_MethodReplacement.DO_NOTHING); } catch (Throwable ignored) {}
+        }
+
+        Class<?> playerModeUseInfoClass = findClassIfExists("com.netease.cloudmusic.module.player.meta.PlayerModeUseInfo", classLoader);
+        if (playerModeUseInfoClass != null) {
+            try { findAndHookMethod(playerModeUseInfoClass, "getSuccess", XC_MethodReplacement.returnConstant(true)); } catch (Throwable ignored) {}
         }
 
         Class<?> themeInfoClass = findClassIfExists("com.netease.cloudmusic.theme.core.ThemeInfo", classLoader);
@@ -347,10 +360,6 @@ public class BlackHook {
             try { findAndHookMethod(themeInfoClass, "isDigitalAlbum", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
             try { findAndHookMethod(themeInfoClass, "isRedPlus", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
             try { findAndHookMethod(themeInfoClass, "isPaid", XC_MethodReplacement.returnConstant(true)); } catch (Throwable ignored) {}
-            try { findAndHookMethod(themeInfoClass, "i", XC_MethodReplacement.returnConstant(0)); } catch (Throwable ignored) {}
-            try { findAndHookMethod(themeInfoClass, "j", XC_MethodReplacement.returnConstant("免费")); } catch (Throwable ignored) {}
-            try { findAndHookMethod(themeInfoClass, "o", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
-            try { findAndHookMethod(themeInfoClass, "s", XC_MethodReplacement.returnConstant(false)); } catch (Throwable ignored) {}
         }
     }
 }
