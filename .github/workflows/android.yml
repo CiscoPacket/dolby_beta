@@ -37,6 +37,7 @@ jobs:
           cd server
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+          node .yarn/releases/yarn-3.8.7.cjs
           node .yarn/releases/yarn-3.8.7.cjs build
           git commit -am "build: update precompiled bundle with xeapi"
           git archive --format=zip HEAD -o ../UnblockNeteaseMusic.zip
