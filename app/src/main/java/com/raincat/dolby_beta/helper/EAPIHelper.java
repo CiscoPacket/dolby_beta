@@ -7,12 +7,16 @@ import com.raincat.dolby_beta.model.NeteaseSongListBean;
 import com.raincat.dolby_beta.net.Http;
 import com.raincat.dolby_beta.utils.NeteaseAES2;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Random;
 import java.util.regex.Pattern;
+
+import de.robv.android.xposed.XposedBridge;
 
 /**
  * <pre>
@@ -168,5 +172,135 @@ public class EAPIHelper {
                 return decrypt(jsonObject.getString("params"));
         } else
             return new JSONObject();
+    }
+
+    /**
+     * VIP 会员信息
+     */
+    public static String modifyVipInfo(String original) {
+        try {
+            JSONObject jsonObject = new JSONObject(original);
+            if (jsonObject.optInt("code") == 200 && !jsonObject.isNull("data")) {
+                JSONObject data = jsonObject.getJSONObject("data");
+                long now = data.optLong("now", System.currentTimeMillis());
+                long expireTime = now + 31536000000L;
+                data.put("redVipLevel", 9);
+                data.put("redVipAnnualCount", 1);
+
+                JSONObject associator = data.optJSONObject("associator");
+                if (associator == null) associator = new JSONObject();
+                associator.put("vipCode", 100);
+                associator.put("vipLevel", 9);
+                associator.put("expireTime", expireTime);
+                associator.put("rights", true);
+                data.put("associator", associator);
+
+                JSONObject musicPackage = data.optJSONObject("musicPackage");
+                if (musicPackage == null) musicPackage = new JSONObject();
+                musicPackage.put("vipCode", 220);
+                musicPackage.put("vipLevel", 9);
+                musicPackage.put("expireTime", expireTime);
+                musicPackage.put("rights", true);
+                data.put("musicPackage", musicPackage);
+
+                JSONObject redplus = data.optJSONObject("redplus");
+                if (redplus == null) redplus = new JSONObject();
+                redplus.put("vipCode", 300);
+                redplus.put("vipLevel", 9);
+                redplus.put("expireTime", expireTime);
+                redplus.put("rights", true);
+                data.put("redplus", redplus);
+
+                return jsonObject.toString();
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("[dolby_beta] modifyVipInfo error: " + t.getMessage());
+        }
+        return original;
+    }
+
+    /**
+     * 账号信息（VIP 角标显示）
+     */
+    public static String modifyAccount(String original) {
+        try {
+            JSONObject jsonObject = new JSONObject(original);
+            JSONObject profile = jsonObject.optJSONObject("profile");
+            if (profile != null) {
+                profile.put("vipType", 100);
+                profile.put("redVipLevel", 9);
+                profile.put("redVipAnnualCount", 1);
+            }
+            JSONObject account = jsonObject.optJSONObject("account");
+            if (account != null) {
+                account.put("vipType", 100);
+            }
+            return jsonObject.toString();
+        } catch (Throwable t) {
+            XposedBridge.log("[dolby_beta] modifyAccount error: " + t.getMessage());
+        }
+        return original;
+    }
+
+    /**
+     * 动效歌词与特效权限
+     */
+    public static String modifyVipAuth(String original) {
+        try {
+            JSONObject jsonObject = new JSONObject(original);
+            JSONArray data = jsonObject.optJSONArray("data");
+            if (data != null) {
+                for (int i = 0; i < data.length(); i++) {
+                    JSONObject item = data.optJSONObject(i);
+                    if (item != null) {
+                        item.put("canUse", true);
+                        item.put("canNotUseReasonCode", 200);
+                    }
+                }
+                return jsonObject.toString();
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("[dolby_beta] modifyVipAuth error: " + t.getMessage());
+        }
+        return original;
+    }
+
+    /**
+     * batch 接口中的 VIP 信息修改
+     */
+    public static String modifyBatchVip(String original) {
+        try {
+            JSONObject jsonObject = new JSONObject(original);
+            boolean modified = false;
+            Iterator<String> keys = jsonObject.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                if (key.contains("vip/info")) {
+                    JSONObject info = jsonObject.optJSONObject(key);
+                    if (info != null) {
+                        jsonObject.put(key, new JSONObject(modifyVipInfo(info.toString())));
+                        modified = true;
+                    }
+                } else if (key.contains("nuser/account/get")) {
+                    JSONObject acc = jsonObject.optJSONObject(key);
+                    if (acc != null) {
+                        jsonObject.put(key, new JSONObject(modifyAccount(acc.toString())));
+                        modified = true;
+                    }
+                } else if (key.contains("vipauth/app/auth/query")) {
+                    JSONObject auth = jsonObject.optJSONObject(key);
+                    if (auth != null) {
+                        jsonObject.put(key, new JSONObject(modifyVipAuth(auth.toString())));
+                        modified = true;
+                    }
+                }
+            }
+            if (modified) {
+                return jsonObject.toString();
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("[dolby_beta] modifyBatchVip error: " + t.getMessage());
+        }
+        return original;
     }
 }
