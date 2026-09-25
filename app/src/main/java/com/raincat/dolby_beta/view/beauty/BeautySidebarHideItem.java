@@ -33,12 +33,16 @@ public class BeautySidebarHideItem extends BaseDialogItem {
     }
 
     public void initData(LinkedHashMap<String, String> sidebarMap, HashMap<String, Boolean> sidebarSettingMap, String sidebarKey) {
-        title = sidebarMap.get(sidebarKey) + "(" + sidebarKey + ")";
+        String name = sidebarMap != null ? sidebarMap.get(sidebarKey) : "";
+        title = (name != null ? name : "") + "(" + sidebarKey + ")";
         key = sidebarKey;
-        setData(true, sidebarSettingMap.get(sidebarKey));
+        boolean isChecked = sidebarSettingMap != null && Boolean.TRUE.equals(sidebarSettingMap.get(sidebarKey));
+        setData(true, isChecked);
         setOnClickListener(view -> {
-            SettingHelper.getInstance().setSidebarSetting(key, !checkBox.isChecked());
-            setData(true, sidebarSettingMap.get(sidebarKey));
+            boolean newChecked = !checkBox.isChecked();
+            SettingHelper.getInstance().setSidebarSetting(key, newChecked);
+            boolean currentChecked = sidebarSettingMap != null && Boolean.TRUE.equals(sidebarSettingMap.get(sidebarKey));
+            setData(true, currentChecked);
         });
     }
 }

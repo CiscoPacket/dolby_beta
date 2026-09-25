@@ -288,15 +288,24 @@ public class SettingHelper {
     public HashMap<String, Boolean> getSidebarSetting(LinkedHashMap<String, String> map) {
         if (sidebarSettingMap == null) {
             sidebarSettingMap = new HashMap<>();
+        }
+        if (map == null) {
+            map = com.raincat.dolby_beta.model.SidebarEnum.getSidebarEnum();
+        }
+        if (map != null) {
             for (String key : map.keySet()) {
-                sidebarSettingMap.put(key, sharedPreferences.getBoolean(key, false));
+                if (!sidebarSettingMap.containsKey(key)) {
+                    sidebarSettingMap.put(key, sharedPreferences.getBoolean(key, false));
+                }
             }
         }
         return sidebarSettingMap;
     }
 
     public void setSidebarSetting(String key, boolean value) {
-        sidebarSettingMap.put(key, value);
+        if (sidebarSettingMap != null) {
+            sidebarSettingMap.put(key, value);
+        }
         sharedPreferences.edit().putBoolean(key, value).apply();
     }
 

@@ -1824,10 +1824,12 @@ public class SettingHook {
 
         final LinkedHashMap<String, String> sidebarMap = SidebarEnum.getSidebarEnum();
         final HashMap<String, Boolean> sidebarSettingMap = SettingHelper.getInstance().getSidebarSetting(sidebarMap);
-        for (Map.Entry<String, String> entry : sidebarMap.entrySet()) {
-            BeautySidebarHideItem item = new BeautySidebarHideItem(context);
-            item.initData(sidebarMap, sidebarSettingMap, entry.getKey());
-            dialogSidebarRoot.addView(item);
+        if (sidebarMap != null) {
+            for (Map.Entry<String, String> entry : sidebarMap.entrySet()) {
+                BeautySidebarHideItem item = new BeautySidebarHideItem(context);
+                item.initData(sidebarMap, sidebarSettingMap, entry.getKey());
+                dialogSidebarRoot.addView(item);
+            }
         }
 
         showLightDialog(context, scrollView, true,

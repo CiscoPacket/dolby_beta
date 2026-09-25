@@ -1,6 +1,7 @@
 package com.raincat.dolby_beta.hook;
 
 import android.content.Context;
+import android.view.View;
 
 import com.raincat.dolby_beta.helper.DebugLogger;
 import com.raincat.dolby_beta.helper.ExtraHelper;
@@ -589,13 +590,30 @@ public class BlackHook {
             try { findAndHookMethod(simpleMusicInfoClass, "isVipSong", returnIfEnabled(false)); } catch (Throwable ignored) {}
         }
 
-        // 7. 鲸云音效与音效素材 (AudioEffectButtonData & AudioEffectTabData)
+        // 7. 鲸云音效与音效素材 (AudioActionView, AudioEffectButtonData & AudioEffectTabData, etc.)
+        for (String sub : new String[]{
+                "com.netease.cloudmusic.music.biz.member.audioeffect.ui.AudioActionView",
+                "com.netease.cloudmusic.music.biz.member.audioeffect.ui.NormalAudioActionView",
+                "com.netease.cloudmusic.music.biz.member.audioeffect.ui.DefaultAudioActionView",
+                "com.netease.cloudmusic.music.biz.member.audioeffect.ui.ToolbarAudioActionView",
+                "com.netease.cloudmusic.music.biz.member.audioeffect.ui.DeviceAeAudioActionView"
+        }) {
+            Class<?> clazz = findClassIfExists(sub, classLoader);
+            if (clazz != null) {
+                try { XposedBridge.hookAllMethods(clazz, "p", returnIfEnabled(false)); } catch (Throwable ignored) {}
+                try { XposedBridge.hookAllMethods(clazz, "l", returnIfEnabled(false)); } catch (Throwable ignored) {}
+            }
+        }
+
         Class<?> audioEffectButtonDataClass = findClassIfExists("com.netease.cloudmusic.music.base.bridge.member.audioeffect.model.AudioEffectButtonData", classLoader);
         if (audioEffectButtonDataClass != null) {
             try { findAndHookMethod(audioEffectButtonDataClass, "getAeVipType", returnIfEnabled(0)); } catch (Throwable ignored) {}
             try { findAndHookMethod(audioEffectButtonDataClass, "getAnimVipType", returnIfEnabled(0)); } catch (Throwable ignored) {}
             try { findAndHookMethod(audioEffectButtonDataClass, "getAudioType", returnIfEnabled(0)); } catch (Throwable ignored) {}
             try { findAndHookMethod(audioEffectButtonDataClass, "getType", returnIfEnabled(1)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(audioEffectButtonDataClass, "getAeLimitTime", returnIfEnabled(0L)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(audioEffectButtonDataClass, "getAnimLimitTime", returnIfEnabled(0L)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(audioEffectButtonDataClass, "getThemeLimitTime", returnIfEnabled(0L)); } catch (Throwable ignored) {}
         }
 
         Class<?> audioBeanClass = findClassIfExists("com.netease.cloudmusic.music.biz.member.audioeffect.model.AudioEffectTabData$AudioBean", classLoader);
@@ -620,15 +638,70 @@ public class BlackHook {
             try { findAndHookMethod(twinkleItemClass, "getSoundType", returnIfEnabled(0)); } catch (Throwable ignored) {}
         }
 
-        // 8. 播放器样式与动效黑胶 (LunaVipCountDownView, PlayerModeUseInfo, PetPlayerModelCycleInfo, ThemeInfo)
+        Class<?> audioEffectDetailDataClass = findClassIfExists("com.netease.cloudmusic.music.base.bridge.member.audioeffect.model.AudioEffectDetailData", classLoader);
+        if (audioEffectDetailDataClass != null) {
+            try { findAndHookMethod(audioEffectDetailDataClass, "getType", returnIfEnabled(1)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(audioEffectDetailDataClass, "getSoundType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(audioEffectDetailDataClass, "getLimitTime", returnIfEnabled(0L)); } catch (Throwable ignored) {}
+        }
+
+        Class<?> animationDataClass = findClassIfExists("com.netease.cloudmusic.music.base.bridge.member.audioeffect.model.AudioEffectDetailData$AnimationData", classLoader);
+        if (animationDataClass != null) {
+            try { findAndHookMethod(animationDataClass, "getType", returnIfEnabled(1)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(animationDataClass, "getLimitTime", returnIfEnabled(0L)); } catch (Throwable ignored) {}
+        }
+
+        Class<?> aeDetailEntityClass = findClassIfExists("com.netease.cloudmusic.module.player.audioeffect.core.meta.AudioEffectDetailEntity", classLoader);
+        if (aeDetailEntityClass != null) {
+            try { findAndHookMethod(aeDetailEntityClass, "getFreeEndTime", returnIfEnabled(expireTime)); } catch (Throwable ignored) {}
+        }
+
+        Class<?> animEffectDetailEntityClass = findClassIfExists("com.netease.cloudmusic.module.player.audioeffect.core.meta.AnimEffectDetailEntity", classLoader);
+        if (animEffectDetailEntityClass != null) {
+            try { findAndHookMethod(animEffectDetailEntityClass, "getFreeEndTime", returnIfEnabled(expireTime)); } catch (Throwable ignored) {}
+        }
+
+        Class<?> customEQTrialDataClass = findClassIfExists("com.netease.cloudmusic.music.base.bridge.member.audioeffect.model.CustomEQTrialStrategyData", classLoader);
+        if (customEQTrialDataClass != null) {
+            try { findAndHookMethod(customEQTrialDataClass, "getExpireTime", returnIfEnabled(expireTime)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(customEQTrialDataClass, "getRemainTime", returnIfEnabled(31536000000L)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(customEQTrialDataClass, "getTrialCopywriter", returnIfEnabled(null)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(customEQTrialDataClass, "getExpiringSoonCopywriter", returnIfEnabled(null)); } catch (Throwable ignored) {}
+        }
+
+        Class<?> playerAudioEffectConfigClass = findClassIfExists("com.netease.cloudmusic.module.playeruimode.PlayerAudioEffectConfig", classLoader);
+        if (playerAudioEffectConfigClass != null) {
+            try { findAndHookMethod(playerAudioEffectConfigClass, "getVipType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(playerAudioEffectConfigClass, "getLimitTime", returnIfEnabled(0L)); } catch (Throwable ignored) {}
+        }
+
+        // 8. 播放器样式与动效黑胶 (LunaVipCountDownView, PlayerModeInfo, PlayerModeUseInfo, PetPlayerModelCycleInfo, ThemeInfo)
         Class<?> lunaCountDownClass = findClassIfExists("com.netease.cloudmusic.ui.hint.playermode.LunaVipCountDownView", classLoader);
         if (lunaCountDownClass != null) {
             try { findAndHookMethod(lunaCountDownClass, "checkIsVipLimit", doNothingIfEnabled()); } catch (Throwable ignored) {}
+            try {
+                findAndHookMethod(lunaCountDownClass, "setVisibility", int.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
+                            param.args[0] = View.GONE;
+                        }
+                    }
+                });
+            } catch (Throwable ignored) {}
+        }
+
+        Class<?> playerModeInfoClass = findClassIfExists("com.netease.cloudmusic.module.player.meta.PlayerModeInfo", classLoader);
+        if (playerModeInfoClass != null) {
+            try { findAndHookMethod(playerModeInfoClass, "getTagCode", returnIfEnabled("")); } catch (Throwable ignored) {}
+            try { findAndHookMethod(playerModeInfoClass, "getLimitFree", returnIfEnabled("1")); } catch (Throwable ignored) {}
+            try { findAndHookMethod(playerModeInfoClass, "getActivityCode", returnIfEnabled(null)); } catch (Throwable ignored) {}
         }
 
         Class<?> playerModeUseInfoClass = findClassIfExists("com.netease.cloudmusic.module.player.meta.PlayerModeUseInfo", classLoader);
         if (playerModeUseInfoClass != null) {
             try { findAndHookMethod(playerModeUseInfoClass, "getSuccess", returnIfEnabled(true)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(playerModeUseInfoClass, "getToast", returnIfEnabled("")); } catch (Throwable ignored) {}
         }
 
         Class<?> petCycleClass = findClassIfExists("com.netease.cloudmusic.module.playeruimode.petplayermode.PetPlayerModelCycleInfo", classLoader);
@@ -638,19 +711,47 @@ public class BlackHook {
 
         Class<?> themeInfoClass = findClassIfExists("com.netease.cloudmusic.theme.core.ThemeInfo", classLoader);
         if (themeInfoClass != null) {
+            try {
+                findAndHookMethod(themeInfoClass, "parseThemeInfo", JSONObject.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return;
+                        try {
+                            JSONObject json = (JSONObject) param.args[0];
+                            if (json != null) {
+                                json.put("paid", true);
+                                json.put("forVip", false);
+                                json.put("paidAlbum", true);
+                                json.put("redPlus", false);
+                                json.put("pointCost", 0);
+                                json.put("rmbCost", "免费");
+                                json.remove("periodLimitSkin");
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+                });
+            } catch (Throwable ignored) {}
             try { findAndHookMethod(themeInfoClass, "getPoints", returnIfEnabled(0)); } catch (Throwable ignored) {}
             try { findAndHookMethod(themeInfoClass, "getPrice", returnIfEnabled("免费")); } catch (Throwable ignored) {}
             try { findAndHookMethod(themeInfoClass, "isVip", returnIfEnabled(false)); } catch (Throwable ignored) {}
             try { findAndHookMethod(themeInfoClass, "isDigitalAlbum", returnIfEnabled(false)); } catch (Throwable ignored) {}
             try { findAndHookMethod(themeInfoClass, "isRedPlus", returnIfEnabled(false)); } catch (Throwable ignored) {}
             try { findAndHookMethod(themeInfoClass, "isPaid", returnIfEnabled(true)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(themeInfoClass, "isPaidDigitalAlbum", returnIfEnabled(true)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(themeInfoClass, "getPeriodLimitSkin", returnIfEnabled(null)); } catch (Throwable ignored) {}
         }
 
-        // 9. 统一权益鉴权拦截 (com.netease.cloudmusic.meta.MemberBenefitsInfo)
+        // 9. 统一权益鉴权拦截 (RightsDO & MemberBenefitsInfo)
+        Class<?> rightsDOClass = findClassIfExists("com.netease.cloudmusic.meta.response.RightsDO", classLoader);
+        if (rightsDOClass != null) {
+            try { findAndHookMethod(rightsDOClass, "getRights", returnIfEnabled(true)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(rightsDOClass, "getVipCode", returnIfEnabled(100)); } catch (Throwable ignored) {}
+        }
+
         Class<?> memberBenefitsClass = findClassIfExists("com.netease.cloudmusic.meta.MemberBenefitsInfo", classLoader);
         if (memberBenefitsClass != null) {
             try { findAndHookMethod(memberBenefitsClass, "getCanUse", returnIfEnabled(Boolean.TRUE)); } catch (Throwable ignored) {}
-            try { findAndHookMethod(memberBenefitsClass, "getCanNotUseReasonCode", returnIfEnabled(null)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(memberBenefitsClass, "getCanNotUseReasonCode", returnIfEnabled(0)); } catch (Throwable ignored) {}
             try { findAndHookMethod(memberBenefitsClass, "isNormalFreeType", returnIfEnabled(true)); } catch (Throwable ignored) {}
             try { findAndHookMethod(memberBenefitsClass, "fromRedPlus", returnIfEnabled(true)); } catch (Throwable ignored) {}
             try { findAndHookMethod(memberBenefitsClass, "fromVip", returnIfEnabled(true)); } catch (Throwable ignored) {}
