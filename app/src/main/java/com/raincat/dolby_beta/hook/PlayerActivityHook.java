@@ -99,7 +99,8 @@ public class PlayerActivityHook {
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         super.afterHookedMethod(param);
                         if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_black_hide_key)) {
-                            hideVinylDisc((ViewGroup) param.thisObject);
+                            final ViewGroup vg = (ViewGroup) param.thisObject;
+                            vg.post(() -> hideVinylDisc(vg));
                         }
                     }
                 });
@@ -448,19 +449,23 @@ public class PlayerActivityHook {
         if (view == null) return;
         try {
             View maskBottom = (View) XposedHelpers.getObjectField(view, "maskBottomView");
-            if (maskBottom != null) maskBottom.setVisibility(View.GONE);
+            if (maskBottom != null && maskBottom.getVisibility() != View.GONE) {
+                maskBottom.setVisibility(View.GONE);
+            }
         } catch (Throwable ignored) {
         }
         try {
             View maskTop = (View) XposedHelpers.getObjectField(view, "maskTopView");
-            if (maskTop != null) maskTop.setVisibility(View.GONE);
+            if (maskTop != null && maskTop.getVisibility() != View.GONE) {
+                maskTop.setVisibility(View.GONE);
+            }
         } catch (Throwable ignored) {
         }
         try {
             ImageView iv = (ImageView) XposedHelpers.getObjectField(view, "imageView");
             if (iv != null) {
                 ViewGroup.LayoutParams lp = iv.getLayoutParams();
-                if (lp != null) {
+                if (lp != null && (lp.width != ViewGroup.LayoutParams.MATCH_PARENT || lp.height != ViewGroup.LayoutParams.MATCH_PARENT)) {
                     lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
                     lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
                     iv.setLayoutParams(lp);
@@ -485,21 +490,39 @@ public class PlayerActivityHook {
             List<ImageView> imageViews = new ArrayList<>();
             findImageViews(rotationLayout, imageViews);
             if (imageViews.size() >= 2) {
-                // 通常第一个是黑胶外圈底图 (或者尺寸较大的底盘)，第二个是封面
-                ImageView first = imageViews.get(0);
-                ImageView second = imageViews.get(1);
-
-                // 判断谁是外圈底图
-                ImageView coverDisc = first;
-                ImageView albumImage = second;
-                if (first.getWidth() < second.getWidth() && first.getWidth() > 0) {
-                    coverDisc = second;
-                    albumImage = first;
+                ImageView albumImage = null;
+                for (ImageView iv : imageViews) {
+                    try {
+                        String idName = iv.getResources().getResourceEntryName(iv.getId()).toLowerCase();
+                        if (idName.contains("cover") || idName.contains("album") || idName.contains("pic")) {
+                            albumImage = iv;
+                            break;
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+                if (albumImage == null) {
+                    // 若无明确ID，取尺寸较小者或最内层元素作为封面
+                    ImageView first = imageViews.get(0);
+                    ImageView second = imageViews.get(1);
+                    if (first.getWidth() > second.getWidth() && second.getWidth() > 0) {
+                        albumImage = second;
+                    } else {
+                        albumImage = first;
+                    }
                 }
 
-                coverDisc.setVisibility(View.INVISIBLE);
+                // 将除封面外的外圈底盘/光斑/遮罩设为不可见
+                for (ImageView iv : imageViews) {
+                    if (iv != albumImage) {
+                        if (iv.getVisibility() != View.INVISIBLE) {
+                            iv.setVisibility(View.INVISIBLE);
+                        }
+                    }
+                }
+
                 ViewGroup.LayoutParams lp = albumImage.getLayoutParams();
-                if (lp != null) {
+                if (lp != null && (lp.width != ViewGroup.LayoutParams.MATCH_PARENT || lp.height != ViewGroup.LayoutParams.MATCH_PARENT)) {
                     lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
                     lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
                     albumImage.setLayoutParams(lp);

@@ -6,7 +6,9 @@ import android.view.View;
 import com.raincat.dolby_beta.helper.SettingHelper;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -50,7 +52,7 @@ public class HideBubbleHook {
                 "com.netease.cloudmusic.discovery.view.arkview.ArkTabBubbleView"
         };
 
-        final List<Class<?>> bubbleClasses = new ArrayList<>();
+        final Set<Class<?>> bubbleClasses = new HashSet<>();
         XC_MethodHook hideAttachHook = new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
@@ -108,13 +110,19 @@ public class HideBubbleHook {
         findAndHookMethod(View.class, "setVisibility", int.class, new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
+                if ((int) param.args[0] == View.GONE) {
+                    return;
+                }
                 if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_bubble_hide_key)) {
                     return;
                 }
                 Class<?> objCls = param.thisObject.getClass();
+                if (bubbleClasses.contains(objCls)) {
+                    param.args[0] = View.GONE;
+                    return;
+                }
                 String name = objCls.getName();
-                if (bubbleClasses.contains(objCls)
-                        || name.contains("MessageBubbleView")
+                if (name.contains("MessageBubbleView")
                         || name.contains("MenuIconShortBubbleView")
                         || name.contains("MenuIconLongBubbleView")
                         || name.contains("BottomBubbleHintContainer")
@@ -122,6 +130,7 @@ public class HideBubbleHook {
                         || name.contains("RedDotBubbleView")
                         || (name.contains("BubbleHint") && !name.contains("ChatBubble"))
                         || (name.contains("BadgeView") && !name.contains("Chat"))) {
+                    bubbleClasses.add(objCls);
                     param.args[0] = View.GONE;
                 }
             }

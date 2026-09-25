@@ -68,7 +68,15 @@ public class HideTabHook {
                                 if (res instanceof List) {
                                     List<?> list = (List<?>) res;
                                     if (list.size() > 2) {
-                                        param.setResult(new CopyOnWriteArrayList<>(list.subList(0, 2)));
+                                        if (res instanceof CopyOnWriteArrayList) {
+                                            param.setResult(new CopyOnWriteArrayList<>(list.subList(0, 2)));
+                                        } else if (res instanceof ArrayList) {
+                                            param.setResult(new ArrayList<>(list.subList(0, 2)));
+                                        } else if (m.getReturnType().isAssignableFrom(CopyOnWriteArrayList.class)) {
+                                            param.setResult(new CopyOnWriteArrayList<>(list.subList(0, 2)));
+                                        } else {
+                                            param.setResult(new ArrayList<>(list.subList(0, 2)));
+                                        }
                                     }
                                 }
                             }
@@ -88,7 +96,11 @@ public class HideTabHook {
                                 if (param.args != null && param.args.length > 0 && param.args[0] instanceof List) {
                                     List<?> list = (List<?>) param.args[0];
                                     if (list.size() > 2) {
-                                        param.args[0] = new ArrayList<>(list.subList(0, 2));
+                                        if (param.args[0] instanceof CopyOnWriteArrayList) {
+                                            param.args[0] = new CopyOnWriteArrayList<>(list.subList(0, 2));
+                                        } else {
+                                            param.args[0] = new ArrayList<>(list.subList(0, 2));
+                                        }
                                     }
                                 }
                             }
