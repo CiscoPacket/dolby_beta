@@ -157,7 +157,8 @@ public class EAPIHelper {
      * 音效
      */
     public static String modifyEffect(String originalContent) {
-        originalContent = Pattern.compile("\"type\":\\d+").matcher(originalContent).replaceAll("\"type\":1");
+        originalContent = Pattern.compile("\"type\":\\d+").matcher(originalContent).replaceAll("\"type\":0");
+        originalContent = Pattern.compile("\"limitTime\":\\d+").matcher(originalContent).replaceAll("\"limitTime\":0");
         return originalContent;
     }
 
@@ -186,6 +187,10 @@ public class EAPIHelper {
                 long expireTime = now + 31536000000L;
                 data.put("redVipLevel", 9);
                 data.put("redVipAnnualCount", 1);
+                data.put("isVip", true);
+                data.put("isRedPlus", true);
+                data.put("userType", 1);
+                data.put("vipType", 100);
 
                 JSONObject associator = data.optJSONObject("associator");
                 if (associator == null) associator = new JSONObject();
@@ -193,6 +198,7 @@ public class EAPIHelper {
                 associator.put("vipLevel", 9);
                 associator.put("expireTime", expireTime);
                 associator.put("rights", true);
+                associator.put("isSign", true);
                 data.put("associator", associator);
 
                 JSONObject musicPackage = data.optJSONObject("musicPackage");
@@ -201,14 +207,19 @@ public class EAPIHelper {
                 musicPackage.put("vipLevel", 9);
                 musicPackage.put("expireTime", expireTime);
                 musicPackage.put("rights", true);
+                musicPackage.put("isSign", true);
                 data.put("musicPackage", musicPackage);
 
                 JSONObject redplus = data.optJSONObject("redplus");
                 if (redplus == null) redplus = new JSONObject();
-                redplus.put("vipCode", 300);
+                redplus.put("vipCode", 100);
                 redplus.put("vipLevel", 9);
                 redplus.put("expireTime", expireTime);
                 redplus.put("rights", true);
+                redplus.put("isSign", true);
+                redplus.put("isSignIap", false);
+                redplus.put("isSignDeduct", false);
+                redplus.put("isSignIapDeduct", false);
                 data.put("redplus", redplus);
 
                 return jsonObject.toString();
@@ -230,10 +241,12 @@ public class EAPIHelper {
                 profile.put("vipType", 100);
                 profile.put("redVipLevel", 9);
                 profile.put("redVipAnnualCount", 1);
+                profile.put("userType", 1);
             }
             JSONObject account = jsonObject.optJSONObject("account");
             if (account != null) {
                 account.put("vipType", 100);
+                account.put("userType", 1);
             }
             return jsonObject.toString();
         } catch (Throwable t) {
@@ -275,13 +288,13 @@ public class EAPIHelper {
             Iterator<String> keys = jsonObject.keys();
             while (keys.hasNext()) {
                 String key = keys.next();
-                if (key.contains("vip/info")) {
+                if (key.contains("vip/info") || key.contains("vip-membership")) {
                     JSONObject info = jsonObject.optJSONObject(key);
                     if (info != null) {
                         jsonObject.put(key, new JSONObject(modifyVipInfo(info.toString())));
                         modified = true;
                     }
-                } else if (key.contains("nuser/account/get")) {
+                } else if (key.contains("account/get") || key.contains("user/info")) {
                     JSONObject acc = jsonObject.optJSONObject(key);
                     if (acc != null) {
                         jsonObject.put(key, new JSONObject(modifyAccount(acc.toString())));
