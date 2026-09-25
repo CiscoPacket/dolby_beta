@@ -159,6 +159,10 @@ public class EAPIHelper {
     public static String modifyEffect(String originalContent) {
         originalContent = Pattern.compile("\"type\":\\d+").matcher(originalContent).replaceAll("\"type\":0");
         originalContent = Pattern.compile("\"limitTime\":\\d+").matcher(originalContent).replaceAll("\"limitTime\":0");
+        originalContent = Pattern.compile("\"vipType\":\\d+").matcher(originalContent).replaceAll("\"vipType\":0");
+        originalContent = Pattern.compile("\"fee\":\\d+").matcher(originalContent).replaceAll("\"fee\":0");
+        originalContent = Pattern.compile("\"payed\":\\d+").matcher(originalContent).replaceAll("\"payed\":1");
+        originalContent = Pattern.compile("\"free\":false").matcher(originalContent).replaceAll("\"free\":true");
         return originalContent;
     }
 
@@ -181,49 +185,50 @@ public class EAPIHelper {
     public static String modifyVipInfo(String original) {
         try {
             JSONObject jsonObject = new JSONObject(original);
-            if (jsonObject.optInt("code") == 200 && !jsonObject.isNull("data")) {
-                JSONObject data = jsonObject.getJSONObject("data");
-                long now = data.optLong("now", System.currentTimeMillis());
-                long expireTime = now + 31536000000L;
-                data.put("redVipLevel", 9);
-                data.put("redVipAnnualCount", 1);
-                data.put("isVip", true);
-                data.put("isRedPlus", true);
-                data.put("userType", 1);
-                data.put("vipType", 100);
-
-                JSONObject associator = data.optJSONObject("associator");
-                if (associator == null) associator = new JSONObject();
-                associator.put("vipCode", 100);
-                associator.put("vipLevel", 9);
-                associator.put("expireTime", expireTime);
-                associator.put("rights", true);
-                associator.put("isSign", true);
-                data.put("associator", associator);
-
-                JSONObject musicPackage = data.optJSONObject("musicPackage");
-                if (musicPackage == null) musicPackage = new JSONObject();
-                musicPackage.put("vipCode", 220);
-                musicPackage.put("vipLevel", 9);
-                musicPackage.put("expireTime", expireTime);
-                musicPackage.put("rights", true);
-                musicPackage.put("isSign", true);
-                data.put("musicPackage", musicPackage);
-
-                JSONObject redplus = data.optJSONObject("redplus");
-                if (redplus == null) redplus = new JSONObject();
-                redplus.put("vipCode", 100);
-                redplus.put("vipLevel", 9);
-                redplus.put("expireTime", expireTime);
-                redplus.put("rights", true);
-                redplus.put("isSign", true);
-                redplus.put("isSignIap", false);
-                redplus.put("isSignDeduct", false);
-                redplus.put("isSignIapDeduct", false);
-                data.put("redplus", redplus);
-
-                return jsonObject.toString();
+            JSONObject data = jsonObject.optJSONObject("data");
+            if (data == null) {
+                data = jsonObject;
             }
+            long now = data.optLong("now", System.currentTimeMillis());
+            long expireTime = now + 31536000000L;
+            data.put("redVipLevel", 9);
+            data.put("redVipAnnualCount", 1);
+            data.put("isVip", true);
+            data.put("isRedPlus", true);
+            data.put("userType", 1);
+            data.put("vipType", 100);
+
+            JSONObject associator = data.optJSONObject("associator");
+            if (associator == null) associator = new JSONObject();
+            associator.put("vipCode", 100);
+            associator.put("vipLevel", 9);
+            associator.put("expireTime", expireTime);
+            associator.put("rights", true);
+            associator.put("isSign", true);
+            data.put("associator", associator);
+
+            JSONObject musicPackage = data.optJSONObject("musicPackage");
+            if (musicPackage == null) musicPackage = new JSONObject();
+            musicPackage.put("vipCode", 220);
+            musicPackage.put("vipLevel", 9);
+            musicPackage.put("expireTime", expireTime);
+            musicPackage.put("rights", true);
+            musicPackage.put("isSign", true);
+            data.put("musicPackage", musicPackage);
+
+            JSONObject redplus = data.optJSONObject("redplus");
+            if (redplus == null) redplus = new JSONObject();
+            redplus.put("vipCode", 100);
+            redplus.put("vipLevel", 9);
+            redplus.put("expireTime", expireTime);
+            redplus.put("rights", true);
+            redplus.put("isSign", true);
+            redplus.put("isSignIap", false);
+            redplus.put("isSignDeduct", false);
+            redplus.put("isSignIapDeduct", false);
+            data.put("redplus", redplus);
+
+            return jsonObject.toString();
         } catch (Throwable t) {
             XposedBridge.log("[dolby_beta] modifyVipInfo error: " + t.getMessage());
         }
@@ -231,17 +236,46 @@ public class EAPIHelper {
     }
 
     /**
-     * 账号信息（VIP 角标显示）
+     * 账号信息（VIP 角标显示与 Moshi ProfileDO 支持）
      */
     public static String modifyAccount(String original) {
         try {
             JSONObject jsonObject = new JSONObject(original);
+            long now = System.currentTimeMillis();
+            long expireTime = now + 31536000000L;
+
             JSONObject profile = jsonObject.optJSONObject("profile");
             if (profile != null) {
                 profile.put("vipType", 100);
                 profile.put("redVipLevel", 9);
                 profile.put("redVipAnnualCount", 1);
                 profile.put("userType", 1);
+
+                JSONObject vipRights = profile.optJSONObject("vipRights");
+                if (vipRights == null) vipRights = new JSONObject();
+                vipRights.put("redVipLevel", 9);
+                vipRights.put("redVipAnnualCount", 1);
+                vipRights.put("now", now);
+
+                JSONObject redplus = vipRights.optJSONObject("redplus");
+                if (redplus == null) redplus = new JSONObject();
+                redplus.put("rights", true);
+                redplus.put("vipCode", 100);
+                vipRights.put("redplus", redplus);
+
+                JSONObject associator = vipRights.optJSONObject("associator");
+                if (associator == null) associator = new JSONObject();
+                associator.put("rights", true);
+                associator.put("vipCode", 100);
+                vipRights.put("associator", associator);
+
+                JSONObject musicPackage = vipRights.optJSONObject("musicPackage");
+                if (musicPackage == null) musicPackage = new JSONObject();
+                musicPackage.put("rights", true);
+                musicPackage.put("vipCode", 220);
+                vipRights.put("musicPackage", musicPackage);
+
+                profile.put("vipRights", vipRights);
             }
             JSONObject account = jsonObject.optJSONObject("account");
             if (account != null) {
@@ -256,24 +290,65 @@ public class EAPIHelper {
     }
 
     /**
-     * 动效歌词与特效权限
+     * 动效歌词、特效与音质鉴权
      */
     public static String modifyVipAuth(String original) {
         try {
             JSONObject jsonObject = new JSONObject(original);
-            JSONArray data = jsonObject.optJSONArray("data");
-            if (data != null) {
-                for (int i = 0; i < data.length(); i++) {
-                    JSONObject item = data.optJSONObject(i);
+            jsonObject.put("code", 200);
+            jsonObject.put("canUse", true);
+            jsonObject.put("auth", true);
+            jsonObject.put("hasAuth", true);
+            jsonObject.put("vip", true);
+
+            JSONArray dataArr = jsonObject.optJSONArray("data");
+            if (dataArr != null) {
+                for (int i = 0; i < dataArr.length(); i++) {
+                    JSONObject item = dataArr.optJSONObject(i);
                     if (item != null) {
                         item.put("canUse", true);
                         item.put("canNotUseReasonCode", 200);
+                        item.put("vip", true);
+                        item.put("auth", true);
                     }
                 }
                 return jsonObject.toString();
             }
+
+            JSONObject dataObj = jsonObject.optJSONObject("data");
+            if (dataObj != null) {
+                dataObj.put("vip", true);
+                dataObj.put("auth", true);
+                dataObj.put("hasAuth", true);
+                dataObj.put("canUse", true);
+                dataObj.put("vipType", 100);
+                dataObj.put("redVipLevel", 9);
+                dataObj.put("canNotUseReasonCode", 200);
+                return jsonObject.toString();
+            }
         } catch (Throwable t) {
             XposedBridge.log("[dolby_beta] modifyVipAuth error: " + t.getMessage());
+        }
+        return original;
+    }
+
+    /**
+     * 播放器样式解锁
+     */
+    public static String modifyPlayerMode(String original) {
+        try {
+            JSONObject jsonObject = new JSONObject(original);
+            jsonObject.put("code", 200);
+            jsonObject.put("success", true);
+            JSONObject data = jsonObject.optJSONObject("data");
+            if (data != null) {
+                data.put("success", true);
+                data.put("hasPrivilege", true);
+                data.put("isVip", false);
+            }
+            return jsonObject.toString();
+        } catch (Throwable t) {
+            XposedBridge.log("[dolby_beta] modifyPlayerMode error: " + t.getMessage());
         }
         return original;
     }
@@ -294,13 +369,13 @@ public class EAPIHelper {
                         jsonObject.put(key, new JSONObject(modifyVipInfo(info.toString())));
                         modified = true;
                     }
-                } else if (key.contains("account/get") || key.contains("user/info")) {
+                } else if (key.contains("account/get") || key.contains("user/info") || key.contains("user/detail") || key.contains("user/profile")) {
                     JSONObject acc = jsonObject.optJSONObject(key);
                     if (acc != null) {
                         jsonObject.put(key, new JSONObject(modifyAccount(acc.toString())));
                         modified = true;
                     }
-                } else if (key.contains("vipauth/app/auth/query")) {
+                } else if (key.contains("vipauth") || key.contains("auth/query")) {
                     JSONObject auth = jsonObject.optJSONObject(key);
                     if (auth != null) {
                         jsonObject.put(key, new JSONObject(modifyVipAuth(auth.toString())));
