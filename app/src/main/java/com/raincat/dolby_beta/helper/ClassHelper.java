@@ -74,11 +74,15 @@ public class ClassHelper {
         void onGet();
     }
 
-    public static synchronized void getCacheClassList(final Context context, final int version, final OnCacheClassListener listener) {
-        if (classLoader == null) {
+    public static synchronized void init(final Context context, final int version) {
+        if (classLoader == null && context != null) {
             classLoader = context.getClassLoader();
             versionCode = version;
         }
+    }
+
+    public static synchronized void getCacheClassList(final Context context, final int version, final OnCacheClassListener listener) {
+        init(context, version);
 
         if (isInitialized) {
             listener.onGet();
@@ -677,7 +681,8 @@ public class ClassHelper {
 
         public static Class<?> getClazz(Context context) {
             if (clazz == null) {
-                clazz = findClassIfExists("com.netease.cloudmusic.music.biz.sidebar.account.j", classLoader);
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                clazz = findClassIfExists("com.netease.cloudmusic.music.biz.sidebar.account.j", cl);
             }
             return clazz;
         }

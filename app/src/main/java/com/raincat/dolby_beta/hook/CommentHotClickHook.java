@@ -16,15 +16,14 @@ import de.robv.android.xposed.XposedHelpers;
 
 /**
  * <pre>
- *     author : RainCat
- *     e-mail : nining377@gmail.com
- *     time   : 2020/05/30
+ *     author : RainCat & Cisco
  *     desc   : 评论区优先显示“最热”内容
- *     version: 1.0
+ *     version: 2.0
  * </pre>
  */
 public class CommentHotClickHook {
     public CommentHotClickHook(Context context) {
+        // 1. 旧版评论数据模型
         Class<?> commentDataClass = ClassHelper.CommentDataClass.getClazz();
         if (commentDataClass != null) {
             XposedBridge.hookAllConstructors(commentDataClass, new XC_MethodHook() {
@@ -46,35 +45,38 @@ public class CommentHotClickHook {
                     }
                 }
             });
+        }
 
-            Class<?> sortTypeListClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.module.comment2.meta.SortTypeList", context.getClassLoader());
-            if (sortTypeListClass == null)
-                sortTypeListClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.music.biz.comment.meta.SortTypeList", context.getClassLoader());
-            if (sortTypeListClass != null)
-                XposedHelpers.findAndHookMethod(sortTypeListClass, "parseList", JSONArray.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        super.beforeHookedMethod(param);
-                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
-                            return;
-                        try {
-                            if (param.args != null && param.args.length > 0 && param.args[0] instanceof JSONArray) {
-                                JSONArray array = (JSONArray) param.args[0];
-                                if (array.length() >= 3) {
-                                    JSONArray array2 = new JSONArray();
-                                    array2.put(array.getJSONObject(1));
-                                    array2.put(array.getJSONObject(2));
-                                    array2.put(array.getJSONObject(0));
-                                    for (int i = 3; i < array.length(); i++) {
-                                        array2.put(array.get(i));
-                                    }
-                                    param.args[0] = array2;
+        // 2. 新版评论排序规则列表 (SortTypeList)
+        Class<?> sortTypeListClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.music.biz.comment.meta.SortTypeList", context.getClassLoader());
+        if (sortTypeListClass == null) {
+            sortTypeListClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.module.comment2.meta.SortTypeList", context.getClassLoader());
+        }
+        if (sortTypeListClass != null) {
+            XposedHelpers.findAndHookMethod(sortTypeListClass, "parseList", JSONArray.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    super.beforeHookedMethod(param);
+                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
+                        return;
+                    try {
+                        if (param.args != null && param.args.length > 0 && param.args[0] instanceof JSONArray) {
+                            JSONArray array = (JSONArray) param.args[0];
+                            if (array.length() >= 3) {
+                                JSONArray array2 = new JSONArray();
+                                array2.put(array.getJSONObject(1)); // 最热评论排第一
+                                array2.put(array.getJSONObject(2));
+                                array2.put(array.getJSONObject(0));
+                                for (int i = 3; i < array.length(); i++) {
+                                    array2.put(array.get(i));
                                 }
+                                param.args[0] = array2;
                             }
-                        } catch (Throwable ignored) {
                         }
+                    } catch (Throwable ignored) {
                     }
-                });
+                }
+            });
         }
     }
 }
