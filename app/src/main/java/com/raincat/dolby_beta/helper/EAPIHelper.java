@@ -44,8 +44,12 @@ public class EAPIHelper {
                 dataBean.setFlag(0);
                 dataBean.setPayed(0);
                 dataBean.setFreeTrialInfo(null);
-                if (dataBean.getUrl() != null && dataBean.getUrl().contains("?"))
-                    dataBean.setUrl(dataBean.getUrl().substring(0, dataBean.getUrl().indexOf("?")));
+                if (dataBean.getUrl() != null && !dataBean.getUrl().isEmpty()) {
+                    dataBean.setCode(200);
+                    if (dataBean.getUrl().contains("126.net") && dataBean.getUrl().contains("?")) {
+                        dataBean.setUrl(dataBean.getUrl().substring(0, dataBean.getUrl().indexOf("?")));
+                    }
+                }
             }
             modifyListBean.getData().add(dataBean);
         }

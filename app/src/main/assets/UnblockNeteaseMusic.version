@@ -1,7 +1,7 @@
-﻿UnblockNeteaseMusic/server
-branch: enhanced
+ITManCHINA/server
+branch: feat/adapt-xeapi
 version: 0.28.0
-commit: c29ff1bfaf138afe3c41ee1be43daa91097afc9f
-date: 2026-08-11T14:40:54+08:00
-message: build(deps): bump fast-uri from 3.1.4 to 3.1.5
-url: https://github.com/UnblockNeteaseMusic/server/commit/c29ff1bfaf138afe3c41ee1be43daa91097afc9f
+commit: 82e69cc96578b5b96d409149ea2837fe43c97da0
+date: 2026-08-27T02:08:00+08:00
+message: fix(bilivideo): handle API errors and stabilize tests (adapt-xeapi precompiled)
+url: https://github.com/ITManCHINA/server/tree/feat/adapt-xeapi

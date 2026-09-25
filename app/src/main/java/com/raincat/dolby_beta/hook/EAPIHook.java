@@ -46,20 +46,30 @@ public class EAPIHook {
                 ClassHelper.HttpResponse httpResponse = new ClassHelper.HttpResponse(param.thisObject);
                 Object eapi = httpResponse.getEapi(context);
                 Uri uri = ClassHelper.HttpUrl.getUri(context, eapi);
-                if (!uri.getPath().contains("/eapi/"))
+                if (uri == null || uri.getPath() == null)
                     return;
                 String path = uri.getPath();
+                if (!path.contains("/eapi/") && !path.contains("/xeapi/") && !path.contains("/api/"))
+                    return;
 
                 if (path.contains("song/enhance/player/url")) {
                     original = EAPIHelper.modifyPlayer(original);
                 } else if (path.contains("song/enhance/download/url")) {
-                    JSONObject jsonObject = new JSONObject(original);
-                    JSONObject object = jsonObject.getJSONObject("data");
-                    JSONArray array = new JSONArray();
-                    array.put(object);
-                    jsonObject.put("data", array);
-                    original = EAPIHelper.modifyPlayer(jsonObject.toString())
-                            .replace("[", "").replace("]", "");
+                    try {
+                        JSONObject jsonObject = new JSONObject(original);
+                        Object dataObj = jsonObject.opt("data");
+                        if (dataObj instanceof JSONObject) {
+                            JSONArray array = new JSONArray();
+                            array.put(dataObj);
+                            jsonObject.put("data", array);
+                            original = EAPIHelper.modifyPlayer(jsonObject.toString())
+                                    .replace("[", "").replace("]", "");
+                        } else if (dataObj instanceof JSONArray) {
+                            original = EAPIHelper.modifyPlayer(jsonObject.toString());
+                        }
+                    } catch (Throwable t) {
+                        XposedBridge.log("[dolby_beta] download/url modify error: " + t.getMessage());
+                    }
                 } else if (path.contains("v1/playlist/manipulate/tracks")) {
                     original = EAPIHelper.modifyManipulate(ClassHelper.HttpParams.getParams(context, eapi), original);
                 } else if (path.contains("song/like")) {
