@@ -154,16 +154,49 @@ public class EAPIHelper {
     }
 
     /**
-     * 音效
+     * 音效 (依据 UNM unblockSoundEffects 机制解除锁定)
      */
     public static String modifyEffect(String originalContent) {
-        originalContent = Pattern.compile("\"type\":\\d+").matcher(originalContent).replaceAll("\"type\":0");
+        try {
+            JSONObject jsonObject = new JSONObject(originalContent);
+            if (jsonObject.optInt("code", 0) == 200) {
+                Object dataObj = jsonObject.opt("data");
+                if (dataObj instanceof JSONArray) {
+                    JSONArray dataArr = (JSONArray) dataObj;
+                    for (int i = 0; i < dataArr.length(); i++) {
+                        JSONObject item = dataArr.optJSONObject(i);
+                        if (item != null) {
+                            unblockSingleEffect(item);
+                        }
+                    }
+                } else if (dataObj instanceof JSONObject) {
+                    unblockSingleEffect((JSONObject) dataObj);
+                }
+            }
+            originalContent = jsonObject.toString();
+        } catch (Throwable ignored) {}
+
         originalContent = Pattern.compile("\"limitTime\":\\d+").matcher(originalContent).replaceAll("\"limitTime\":0");
         originalContent = Pattern.compile("\"vipType\":\\d+").matcher(originalContent).replaceAll("\"vipType\":0");
         originalContent = Pattern.compile("\"fee\":\\d+").matcher(originalContent).replaceAll("\"fee\":0");
         originalContent = Pattern.compile("\"payed\":\\d+").matcher(originalContent).replaceAll("\"payed\":1");
         originalContent = Pattern.compile("\"free\":false").matcher(originalContent).replaceAll("\"free\":true");
         return originalContent;
+    }
+
+    private static void unblockSingleEffect(JSONObject item) {
+        try {
+            if (item.has("type") && item.optInt("type", 0) != 0) {
+                item.put("type", 1);
+            }
+            item.put("fee", 0);
+            item.put("payed", 1);
+            item.put("free", true);
+            item.put("vipType", 0);
+            item.put("limitTime", 0);
+            item.put("canUse", true);
+            item.put("canNotUseReasonCode", 200);
+        } catch (Throwable ignored) {}
     }
 
     public static JSONObject decrypt(String params) throws Exception {
@@ -180,7 +213,7 @@ public class EAPIHelper {
     }
 
     /**
-     * VIP 会员信息
+     * VIP 会员信息 (对标 UNM ENABLE_LOCAL_VIP=svip 规范)
      */
     public static String modifyVipInfo(String original) {
         try {
@@ -190,7 +223,7 @@ public class EAPIHelper {
                 data = jsonObject;
             }
             long now = data.optLong("now", System.currentTimeMillis());
-            long expireTime = now + 31536000000L;
+            long expireTime = now + 31622400000L;
             data.put("redVipLevel", 9);
             data.put("redVipAnnualCount", 1);
             data.put("isVip", true);
@@ -205,20 +238,26 @@ public class EAPIHelper {
             associator.put("expireTime", expireTime);
             associator.put("rights", true);
             associator.put("isSign", true);
+            associator.put("isSignIap", false);
+            associator.put("isSignDeduct", false);
+            associator.put("isSignIapDeduct", false);
             data.put("associator", associator);
 
             JSONObject musicPackage = data.optJSONObject("musicPackage");
             if (musicPackage == null) musicPackage = new JSONObject();
-            musicPackage.put("vipCode", 220);
+            musicPackage.put("vipCode", 230);
             musicPackage.put("vipLevel", 9);
             musicPackage.put("expireTime", expireTime);
             musicPackage.put("rights", true);
             musicPackage.put("isSign", true);
+            musicPackage.put("isSignIap", false);
+            musicPackage.put("isSignDeduct", false);
+            musicPackage.put("isSignIapDeduct", false);
             data.put("musicPackage", musicPackage);
 
             JSONObject redplus = data.optJSONObject("redplus");
             if (redplus == null) redplus = new JSONObject();
-            redplus.put("vipCode", 100);
+            redplus.put("vipCode", 300);
             redplus.put("vipLevel", 9);
             redplus.put("expireTime", expireTime);
             redplus.put("rights", true);
@@ -227,6 +266,19 @@ public class EAPIHelper {
             redplus.put("isSignDeduct", false);
             redplus.put("isSignIapDeduct", false);
             data.put("redplus", redplus);
+
+            JSONObject albumVip = data.optJSONObject("albumVip");
+            if (albumVip == null) albumVip = new JSONObject();
+            albumVip.put("vipCode", 400);
+            albumVip.put("vipLevel", 0);
+            albumVip.put("expireTime", expireTime);
+            data.put("albumVip", albumVip);
+
+            JSONObject memberLogo = new JSONObject();
+            memberLogo.put("url", "https://p1.music.126.net/2zQloRuJIGiguu-ekkVxwQ==/109951166687981504.png");
+            memberLogo.put("width", 64.0);
+            memberLogo.put("height", 24.0);
+            data.put("memberLogo", memberLogo);
 
             return jsonObject.toString();
         } catch (Throwable t) {
@@ -242,7 +294,12 @@ public class EAPIHelper {
         try {
             JSONObject jsonObject = new JSONObject(original);
             long now = System.currentTimeMillis();
-            long expireTime = now + 31536000000L;
+            long expireTime = now + 31622400000L;
+
+            JSONObject memberLogo = new JSONObject();
+            memberLogo.put("url", "https://p1.music.126.net/2zQloRuJIGiguu-ekkVxwQ==/109951166687981504.png");
+            memberLogo.put("width", 64.0);
+            memberLogo.put("height", 24.0);
 
             JSONObject profile = jsonObject.optJSONObject("profile");
             if (profile != null) {
@@ -250,30 +307,48 @@ public class EAPIHelper {
                 profile.put("redVipLevel", 9);
                 profile.put("redVipAnnualCount", 1);
                 profile.put("userType", 1);
+                profile.put("memberLogo", memberLogo);
 
                 JSONObject vipRights = profile.optJSONObject("vipRights");
                 if (vipRights == null) vipRights = new JSONObject();
                 vipRights.put("redVipLevel", 9);
                 vipRights.put("redVipAnnualCount", 1);
                 vipRights.put("now", now);
+                vipRights.put("memberLogo", memberLogo);
 
                 JSONObject redplus = vipRights.optJSONObject("redplus");
                 if (redplus == null) redplus = new JSONObject();
                 redplus.put("rights", true);
-                redplus.put("vipCode", 100);
+                redplus.put("vipCode", 300);
+                redplus.put("vipLevel", 9);
+                redplus.put("expireTime", expireTime);
+                redplus.put("isSign", true);
                 vipRights.put("redplus", redplus);
 
                 JSONObject associator = vipRights.optJSONObject("associator");
                 if (associator == null) associator = new JSONObject();
                 associator.put("rights", true);
                 associator.put("vipCode", 100);
+                associator.put("vipLevel", 9);
+                associator.put("expireTime", expireTime);
+                associator.put("isSign", true);
                 vipRights.put("associator", associator);
 
                 JSONObject musicPackage = vipRights.optJSONObject("musicPackage");
                 if (musicPackage == null) musicPackage = new JSONObject();
                 musicPackage.put("rights", true);
-                musicPackage.put("vipCode", 220);
+                musicPackage.put("vipCode", 230);
+                musicPackage.put("vipLevel", 9);
+                musicPackage.put("expireTime", expireTime);
+                musicPackage.put("isSign", true);
                 vipRights.put("musicPackage", musicPackage);
+
+                JSONObject albumVip = vipRights.optJSONObject("albumVip");
+                if (albumVip == null) albumVip = new JSONObject();
+                albumVip.put("vipCode", 400);
+                albumVip.put("vipLevel", 0);
+                albumVip.put("expireTime", expireTime);
+                vipRights.put("albumVip", albumVip);
 
                 profile.put("vipRights", vipRights);
             }
@@ -281,6 +356,7 @@ public class EAPIHelper {
             if (account != null) {
                 account.put("vipType", 100);
                 account.put("userType", 1);
+                account.put("memberLogo", memberLogo);
             }
             return jsonObject.toString();
         } catch (Throwable t) {
@@ -290,7 +366,77 @@ public class EAPIHelper {
     }
 
     /**
-     * 动效歌词、特效与音质鉴权
+     * VIP 会员图标与 Logo (支持 SVIP 动态图标)
+     */
+    public static String modifyMemberLogo(String original) {
+        try {
+            JSONObject jsonObject = new JSONObject(original);
+            jsonObject.put("code", 200);
+            JSONObject data = jsonObject.optJSONObject("data");
+            if (data == null) {
+                data = new JSONObject();
+                jsonObject.put("data", data);
+            }
+            data.put("doubleRelationLogo", false);
+
+            JSONObject userLogo = data.optJSONObject("userLogo");
+            if (userLogo == null) {
+                userLogo = new JSONObject();
+                data.put("userLogo", userLogo);
+            }
+
+            String svipImgUrl = "https://p1.music.126.net/2zQloRuJIGiguu-ekkVxwQ==/109951166687981504.png";
+            JSONObject logoInfo = new JSONObject();
+            logoInfo.put("url", svipImgUrl);
+            logoInfo.put("width", 64);
+            logoInfo.put("height", 24);
+
+            JSONObject levelMap = new JSONObject();
+            for (int i = 0; i <= 9; i++) {
+                levelMap.put("v" + i, logoInfo);
+                levelMap.put("V" + i, logoInfo);
+            }
+
+            JSONObject styleMap = new JSONObject();
+            styleMap.put("normal", levelMap);
+            styleMap.put("flash", levelMap);
+            styleMap.put("renew", levelMap);
+            styleMap.put("open", levelMap);
+            styleMap.put("annul", levelMap);
+            styleMap.put("expired", levelMap);
+            styleMap.put("expiring", levelMap);
+            styleMap.put("limitFree", levelMap);
+
+            userLogo.put("svipLogo", styleMap);
+            userLogo.put("svipIcon", styleMap);
+            userLogo.put("vipLogo", styleMap);
+            userLogo.put("vipIcon", styleMap);
+            userLogo.put("friendSVipIcon", styleMap);
+            userLogo.put("familySVipIcon", styleMap);
+            userLogo.put("loverSVipIcon", styleMap);
+            userLogo.put("undefinedSVipIcon", styleMap);
+            userLogo.put("friendVipIcon", styleMap);
+            userLogo.put("familyVipIcon", styleMap);
+            userLogo.put("loverVipIcon", styleMap);
+            userLogo.put("undefinedVipIcon", styleMap);
+
+            JSONObject userLogoResource = data.optJSONObject("userLogoResource");
+            if (userLogoResource == null) {
+                userLogoResource = new JSONObject();
+                data.put("userLogoResource", userLogoResource);
+            }
+            userLogoResource.put("userLogo", userLogo);
+
+            jsonObject.put("userLogo", userLogo);
+            return jsonObject.toString();
+        } catch (Throwable t) {
+            XposedBridge.log("[dolby_beta] modifyMemberLogo error: " + t.getMessage());
+        }
+        return original;
+    }
+
+    /**
+     * 动效歌词、特效与音质鉴权 (递归遍历所有层级特权)
      */
     public static String modifyVipAuth(String original) {
         try {
@@ -300,36 +446,59 @@ public class EAPIHelper {
             jsonObject.put("auth", true);
             jsonObject.put("hasAuth", true);
             jsonObject.put("vip", true);
-
-            JSONArray dataArr = jsonObject.optJSONArray("data");
-            if (dataArr != null) {
-                for (int i = 0; i < dataArr.length(); i++) {
-                    JSONObject item = dataArr.optJSONObject(i);
-                    if (item != null) {
-                        item.put("canUse", true);
-                        item.put("canNotUseReasonCode", 200);
-                        item.put("vip", true);
-                        item.put("auth", true);
-                    }
-                }
-                return jsonObject.toString();
-            }
-
-            JSONObject dataObj = jsonObject.optJSONObject("data");
-            if (dataObj != null) {
-                dataObj.put("vip", true);
-                dataObj.put("auth", true);
-                dataObj.put("hasAuth", true);
-                dataObj.put("canUse", true);
-                dataObj.put("vipType", 100);
-                dataObj.put("redVipLevel", 9);
-                dataObj.put("canNotUseReasonCode", 200);
-                return jsonObject.toString();
-            }
+            injectAuthPrivilege(jsonObject);
+            return jsonObject.toString();
         } catch (Throwable t) {
             XposedBridge.log("[dolby_beta] modifyVipAuth error: " + t.getMessage());
         }
         return original;
+    }
+
+    private static void injectAuthPrivilege(JSONObject obj) {
+        if (obj == null) return;
+        try {
+            if (obj.has("canUse")) obj.put("canUse", true);
+            if (obj.has("canNotUseReasonCode")) obj.put("canNotUseReasonCode", 200);
+            if (obj.has("auth")) obj.put("auth", true);
+            if (obj.has("hasAuth")) obj.put("hasAuth", true);
+            if (obj.has("vip")) obj.put("vip", true);
+            if (obj.has("hasPrivilege")) obj.put("hasPrivilege", true);
+            if (obj.has("success")) obj.put("success", true);
+            if (obj.has("toCashier")) obj.put("toCashier", false);
+            if (obj.has("disable")) obj.put("disable", false);
+            if (obj.has("vipLimit")) obj.put("vipLimit", false);
+            if (obj.has("canTrial")) obj.put("canTrial", true);
+            if (obj.has("chargeType")) obj.put("chargeType", 0);
+            if (obj.has("fee")) obj.put("fee", 0);
+            if (obj.has("payed")) obj.put("payed", 1);
+            if (obj.has("isVip")) obj.put("isVip", true);
+        } catch (Throwable ignored) {}
+
+        List<String> keyList = new ArrayList<>();
+        Iterator<String> it = obj.keys();
+        while (it.hasNext()) {
+            keyList.add(it.next());
+        }
+        for (String key : keyList) {
+            Object child = obj.opt(key);
+            if (child instanceof JSONObject) {
+                injectAuthPrivilege((JSONObject) child);
+            } else if (child instanceof JSONArray) {
+                injectAuthPrivilegeArray((JSONArray) child);
+            }
+        }
+    }
+
+    private static void injectAuthPrivilegeArray(JSONArray arr) {
+        if (arr == null) return;
+        for (int i = 0; i < arr.length(); i++) {
+            Object item = arr.opt(i);
+            if (item instanceof JSONObject) {
+                injectAuthPrivilege((JSONObject) item);
+            } else if (item instanceof JSONArray) {
+                injectAuthPrivilegeArray((JSONArray) item);
+            }
+        }
     }
 
     /**
@@ -340,6 +509,7 @@ public class EAPIHelper {
             JSONObject jsonObject = new JSONObject(original);
             jsonObject.put("code", 200);
             jsonObject.put("success", true);
+            injectAuthPrivilege(jsonObject);
             JSONObject data = jsonObject.optJSONObject("data");
             if (data != null) {
                 data.put("success", true);
@@ -354,38 +524,143 @@ public class EAPIHelper {
     }
 
     /**
-     * batch 接口中的 VIP 信息修改
+     * UNM 全局特权注入 (通用递归注入)
+     * 解锁歌曲 VIP 限制、音质限制、播放下载权限
+     */
+    public static String injectUniversalPrivilege(String original) {
+        try {
+            JSONObject jsonObject = new JSONObject(original);
+            injectPrivilege(jsonObject);
+            return jsonObject.toString();
+        } catch (Throwable t) {
+            return original;
+        }
+    }
+
+    public static void injectPrivilege(JSONObject obj) {
+        if (obj == null) return;
+        try {
+            if (obj.has("cp")) obj.put("cp", 1);
+            if (obj.has("fee")) obj.put("fee", 0);
+            if (obj.has("payed") && obj.optInt("payed", 0) == 0) obj.put("payed", 1);
+            if (obj.has("st")) obj.put("st", 0);
+            if (obj.has("sp") && obj.has("subp")) {
+                obj.put("sp", 7);
+                obj.put("subp", 1);
+            }
+            if (obj.has("playable")) {
+                obj.put("playable", true);
+                obj.put("unplayableType", "unknown");
+            }
+            int dlMax = obj.optInt("downloadMaxbr", 0);
+            if (dlMax == 0 && obj.has("downloadMaxbr")) {
+                dlMax = 999000;
+                obj.put("downloadMaxbr", 999000);
+            }
+            if (obj.has("dl") && dlMax > 0 && obj.optInt("dl", 0) < dlMax) {
+                obj.put("dl", dlMax);
+            }
+            int plMax = obj.optInt("playMaxbr", 0);
+            if (plMax == 0 && obj.has("playMaxbr")) {
+                plMax = 999000;
+                obj.put("playMaxbr", 999000);
+            }
+            if (obj.has("pl") && plMax > 0 && obj.optInt("pl", 0) < plMax) {
+                obj.put("pl", plMax);
+            }
+            if (obj.has("maxbr") && obj.optInt("maxbr", 0) < 999000) {
+                obj.put("maxbr", 999000);
+            }
+            if (obj.has("plLevel") && "none".equals(obj.optString("plLevel"))) {
+                obj.put("plLevel", "lossless");
+            }
+            if (obj.has("dlLevel") && "none".equals(obj.optString("dlLevel"))) {
+                obj.put("dlLevel", "lossless");
+            }
+            if (obj.has("flLevel") && "none".equals(obj.optString("flLevel"))) {
+                obj.put("flLevel", "lossless");
+            }
+            if (obj.has("freeTrialInfo")) {
+                obj.put("freeTrialInfo", JSONObject.NULL);
+            }
+            if (obj.has("noCopyrightRcmd")) {
+                obj.put("noCopyrightRcmd", JSONObject.NULL);
+            }
+        } catch (Throwable ignored) {}
+
+        List<String> keyList = new ArrayList<>();
+        Iterator<String> keys = obj.keys();
+        while (keys.hasNext()) {
+            keyList.add(keys.next());
+        }
+        for (String key : keyList) {
+            Object child = obj.opt(key);
+            if (child instanceof JSONObject) {
+                injectPrivilege((JSONObject) child);
+            } else if (child instanceof JSONArray) {
+                injectPrivilegeArray((JSONArray) child);
+            }
+        }
+    }
+
+    public static void injectPrivilegeArray(JSONArray arr) {
+        if (arr == null) return;
+        for (int i = 0; i < arr.length(); i++) {
+            Object item = arr.opt(i);
+            if (item instanceof JSONObject) {
+                injectPrivilege((JSONObject) item);
+            } else if (item instanceof JSONArray) {
+                injectPrivilegeArray((JSONArray) item);
+            }
+        }
+    }
+
+    /**
+     * batch 接口中的 VIP 信息修改与全局注入
      */
     public static String modifyBatchVip(String original) {
         try {
             JSONObject jsonObject = new JSONObject(original);
-            boolean modified = false;
+            List<String> keyList = new ArrayList<>();
             Iterator<String> keys = jsonObject.keys();
             while (keys.hasNext()) {
-                String key = keys.next();
-                if (key.contains("vip/info") || key.contains("vip-membership")) {
+                keyList.add(keys.next());
+            }
+            for (String key : keyList) {
+                if (key.contains("memberlogo") || key.contains("vip/logo") || key.contains("vipnewcenter")) {
+                    JSONObject logo = jsonObject.optJSONObject(key);
+                    if (logo != null) {
+                        jsonObject.put(key, new JSONObject(modifyMemberLogo(logo.toString())));
+                    }
+                } else if (key.contains("vip/info") || key.contains("vip-membership")) {
                     JSONObject info = jsonObject.optJSONObject(key);
                     if (info != null) {
                         jsonObject.put(key, new JSONObject(modifyVipInfo(info.toString())));
-                        modified = true;
                     }
                 } else if (key.contains("account/get") || key.contains("user/info") || key.contains("user/detail") || key.contains("user/profile")) {
                     JSONObject acc = jsonObject.optJSONObject(key);
                     if (acc != null) {
                         jsonObject.put(key, new JSONObject(modifyAccount(acc.toString())));
-                        modified = true;
                     }
-                } else if (key.contains("vipauth") || key.contains("auth/query")) {
+                } else if (key.contains("playermode") || key.contains("player/mode") || key.contains("vinyl")) {
+                    JSONObject pm = jsonObject.optJSONObject(key);
+                    if (pm != null) {
+                        jsonObject.put(key, new JSONObject(modifyPlayerMode(pm.toString())));
+                    }
+                } else if (key.contains("usertool/sound") || key.contains("sound")) {
+                    JSONObject snd = jsonObject.optJSONObject(key);
+                    if (snd != null) {
+                        jsonObject.put(key, new JSONObject(modifyEffect(snd.toString())));
+                    }
+                } else if (key.contains("vipauth") || key.contains("auth/query") || key.contains("soundquality")) {
                     JSONObject auth = jsonObject.optJSONObject(key);
                     if (auth != null) {
                         jsonObject.put(key, new JSONObject(modifyVipAuth(auth.toString())));
-                        modified = true;
                     }
                 }
             }
-            if (modified) {
-                return jsonObject.toString();
-            }
+            injectPrivilege(jsonObject);
+            return jsonObject.toString();
         } catch (Throwable t) {
             XposedBridge.log("[dolby_beta] modifyBatchVip error: " + t.getMessage());
         }

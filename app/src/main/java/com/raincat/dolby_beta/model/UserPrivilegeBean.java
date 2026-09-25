@@ -43,11 +43,22 @@ public class UserPrivilegeBean {
         private AssociatorBean associator;
         private MusicPackageBean musicPackage;
         private RedPlusBean redplus;
+        private AlbumVipBean albumVip;
         private long now;
         private boolean oldCacheProtocol;
         private int redVipAnnualCount;
         private int redVipLevel;
         private long userId;
+
+        public AlbumVipBean getAlbumVip() {
+            if (albumVip == null)
+                albumVip = new AlbumVipBean();
+            return albumVip;
+        }
+
+        public void setAlbumVip(AlbumVipBean albumVip) {
+            this.albumVip = albumVip;
+        }
 
         public RedPlusBean getRedplus() {
             if (redplus == null)
@@ -182,7 +193,7 @@ public class UserPrivilegeBean {
             private boolean isSignDeduct = false;
             private boolean isSignIap = false;
             private boolean isSignIapDeduct = false;
-            private int vipCode = 220;
+            private int vipCode = 230;
 
             public long getExpireTime() {
                 return expireTime;
@@ -239,7 +250,7 @@ public class UserPrivilegeBean {
             private boolean isSignDeduct = false;
             private boolean isSignIap = false;
             private boolean isSignIapDeduct = false;
-            private int vipCode = 100;
+            private int vipCode = 300;
             private int vipLevel = 9;
 
             public long getExpireTime() {
@@ -280,6 +291,36 @@ public class UserPrivilegeBean {
 
             public void setIsSignIapDeduct(boolean isSignIapDeduct) {
                 this.isSignIapDeduct = isSignIapDeduct;
+            }
+
+            public int getVipCode() {
+                return vipCode;
+            }
+
+            public void setVipCode(int vipCode) {
+                this.vipCode = vipCode;
+            }
+
+            public int getVipLevel() {
+                return vipLevel;
+            }
+
+            public void setVipLevel(int vipLevel) {
+                this.vipLevel = vipLevel;
+            }
+        }
+
+        public static class AlbumVipBean {
+            private long expireTime = 0;
+            private int vipCode = 400;
+            private int vipLevel = 0;
+
+            public long getExpireTime() {
+                return expireTime;
+            }
+
+            public void setExpireTime(long expireTime) {
+                this.expireTime = expireTime;
             }
 
             public int getVipCode() {

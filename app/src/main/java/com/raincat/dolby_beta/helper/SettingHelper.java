@@ -345,6 +345,9 @@ public class SettingHelper {
     }
     public String getLocalVip() {
         String value = sharedPreferences.getString(SettingHelper.local_vip_key, SettingHelper.local_vip_default);
+        if ((value == null || value.trim().isEmpty()) && isEnable(black_key)) {
+            return "svip";
+        }
         return value == null ? "" : value.trim();
     }
 
