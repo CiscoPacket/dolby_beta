@@ -90,8 +90,8 @@ public class HookOther {
                             //音源代理
                             new ProxyHook(context, false);
                             //黑胶
+                            new BlackHook(context, versionCode);
                             if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
-                                new BlackHook(context, versionCode);
                                 deleteAdAndTinker();
                             }
                             //不变灰

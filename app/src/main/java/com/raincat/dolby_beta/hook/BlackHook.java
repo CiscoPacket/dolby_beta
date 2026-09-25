@@ -411,6 +411,36 @@ public class BlackHook {
             try { findAndHookMethod(audioQualityVOClass, "getToCashier", returnIfEnabled(false)); } catch (Throwable ignored) {}
             try { findAndHookMethod(audioQualityVOClass, "getDisable", returnIfEnabled(false)); } catch (Throwable ignored) {}
             try { findAndHookMethod(audioQualityVOClass, "getCornerType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+
+            try {
+                findAndHookMethod(audioQualityVOClass, "setDisable", boolean.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) param.args[0] = false;
+                    }
+                });
+            } catch (Throwable ignored) {}
+            try {
+                findAndHookMethod(audioQualityVOClass, "setToCashier", boolean.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) param.args[0] = false;
+                    }
+                });
+            } catch (Throwable ignored) {}
+            try {
+                XposedBridge.hookAllConstructors(audioQualityVOClass, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return;
+                        try { XposedHelpers.setBooleanField(param.thisObject, "disable", false); } catch (Throwable ignored) {}
+                        try { XposedHelpers.setBooleanField(param.thisObject, "toCashier", false); } catch (Throwable ignored) {}
+                        try { XposedHelpers.setBooleanField(param.thisObject, "isVip", false); } catch (Throwable ignored) {}
+                        try { XposedHelpers.setBooleanField(param.thisObject, "isVipAudioQuality", false); } catch (Throwable ignored) {}
+                        try { XposedHelpers.setIntField(param.thisObject, "cornerType", 0); } catch (Throwable ignored) {}
+                    }
+                });
+            } catch (Throwable ignored) {}
         }
 
         Class<?> trialInfoClass = findClassIfExists("com.netease.cloudmusic.meta.SoundQualityTrialInfo", classLoader);
@@ -539,6 +569,13 @@ public class BlackHook {
             try { findAndHookMethod(songPrivilegeDOClass, "getPlLevel", returnIfEnabled("lossless")); } catch (Throwable ignored) {}
             try { findAndHookMethod(songPrivilegeDOClass, "getDlLevel", returnIfEnabled("lossless")); } catch (Throwable ignored) {}
             try { findAndHookMethod(songPrivilegeDOClass, "getFlLevel", returnIfEnabled("lossless")); } catch (Throwable ignored) {}
+            try { findAndHookMethod(songPrivilegeDOClass, "getFreeTrialPrivilege", returnIfEnabled(null)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(songPrivilegeDOClass, "getFreeTimeTrialPrivilege", returnIfEnabled(null)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(songPrivilegeDOClass, "getFreeTrialInfo", returnIfEnabled(null)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(songPrivilegeDOClass, "getFreeTrialType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(songPrivilegeDOClass, "getTrialInfo", returnIfEnabled(null)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(songPrivilegeDOClass, "getTrialMode", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(songPrivilegeDOClass, "getTrialType", returnIfEnabled(0)); } catch (Throwable ignored) {}
         }
 
         Class<?> musicInfoClass = findClassIfExists("com.netease.cloudmusic.meta.MusicInfo", classLoader);

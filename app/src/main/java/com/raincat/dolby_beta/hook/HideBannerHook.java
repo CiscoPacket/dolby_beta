@@ -88,18 +88,21 @@ public class HideBannerHook {
             }
         }
 
-        // 3. 数据层拦截 BannerViewHelper.setBannerSync (清空数据，触发网易云自带折叠逻辑)
+        // 3. 数据层拦截 BannerViewHelper (清空数据，触发网易云自带折叠逻辑)
         Class<?> bannerHelperClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.BannerViewHelper", context.getClassLoader());
         if (bannerHelperClass != null) {
             for (Method m : bannerHelperClass.getDeclaredMethods()) {
-                if ("setBannerSync".equals(m.getName())) {
+                String mn = m.getName();
+                if ("setBannerSync".equals(mn) || "attachView".equals(mn) || "setBanners".equals(mn)) {
                     try {
                         XposedBridge.hookMethod(m, new XC_MethodHook() {
                             @Override
                             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                                 if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_banner_hide_key)) {
-                                    if (param.args.length > 0 && param.args[0] != null) {
-                                        param.args[0] = new ArrayList<>();
+                                    for (int i = 0; i < param.args.length; i++) {
+                                        if (param.args[i] instanceof java.util.List) {
+                                            param.args[i] = new ArrayList<>();
+                                        }
                                     }
                                 }
                             }
@@ -110,12 +113,58 @@ public class HideBannerHook {
             }
         }
 
-        // 4. 次级/其他Banner组件
+        // 4. 适配新版 9.x 发现页/推荐页各类 Banner ViewHolder (折叠高宽并隐藏)
+        String[] bannerViewHolderClasses = new String[]{
+                "com.netease.cloudmusic.discovery.view.module.banner.DiscoveryBannerViewHolder",
+                "com.netease.cloudmusic.discovery.view.module.banner.v3.BannerViewHolderV3",
+                "com.netease.cloudmusic.discovery.view.module.banner.music.MusicBannerViewHolder",
+                "com.netease.cloudmusic.discovery.view.module.banner.rcmd.OperationRcmdBannerViewHolder",
+                "com.netease.cloudmusic.discovery.view.module.banner.rcmd.RcmdBannerViewHolder",
+                "com.netease.cloudmusic.music.biz.voice.homepage.recommend.banner.BannerViewHolder",
+                "com.netease.cloudmusic.module.childmode.viewholder.BannerViewHolder"
+        };
+        for (String vhName : bannerViewHolderClasses) {
+            Class<?> vhClass = XposedHelpers.findClassIfExists(vhName, context.getClassLoader());
+            if (vhClass != null) {
+                XposedBridge.hookAllConstructors(vhClass, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_banner_hide_key)) return;
+                        try {
+                            View itemView = (View) XposedHelpers.getObjectField(param.thisObject, "itemView");
+                            collapseBannerView(itemView);
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                });
+                for (Method m : vhClass.getDeclaredMethods()) {
+                    String mn = m.getName();
+                    if (mn.startsWith("onBind") || mn.equals("bind") || mn.equals("attach") || mn.equals("init")) {
+                        try {
+                            XposedBridge.hookMethod(m, new XC_MethodHook() {
+                                @Override
+                                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_banner_hide_key)) return;
+                                    try {
+                                        View itemView = (View) XposedHelpers.getObjectField(param.thisObject, "itemView");
+                                        collapseBannerView(itemView);
+                                    } catch (Throwable ignored) {
+                                    }
+                                }
+                            });
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. 次级/其他Banner组件
         String[] otherBannerClasses = new String[]{
                 "com.netease.cloudmusic.ui.DailyMusicBannerView",
                 "com.netease.cloudmusic.ui.AdBannerView",
                 "com.netease.cloudmusic.ui.CommentBannerViewContainer",
-                "com.netease.cloudmusic.music.biz.voice.homepage.recommend.banner.BannerViewHolder"
+                "com.netease.cloudmusic.newmusic.DayAndNewMusicBannerView"
         };
         for (String clsName : otherBannerClasses) {
             Class<?> cls = XposedHelpers.findClassIfExists(clsName, context.getClassLoader());
@@ -127,6 +176,17 @@ public class HideBannerHook {
                 } catch (Throwable ignored) {
                 }
             }
+        }
+    }
+
+    private static void collapseBannerView(View view) {
+        if (view == null) return;
+        view.setVisibility(View.GONE);
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp != null) {
+            lp.width = 0;
+            lp.height = 0;
+            view.setLayoutParams(lp);
         }
     }
 }

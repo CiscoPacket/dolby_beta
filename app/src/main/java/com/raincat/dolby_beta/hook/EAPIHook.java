@@ -85,9 +85,18 @@ public class EAPIHook {
                             } else if (dataObj instanceof JSONArray) {
                                 original = EAPIHelper.modifyPlayer(jsonObject.toString());
                             }
+                            if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
+                                original = EAPIHelper.injectUniversalPrivilege(original);
+                            }
                         } catch (Throwable t) {
                             DebugLogger.e("EAPIHook", "download/url modify error: " + t.getMessage(), t);
                         }
+                    } else if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key)
+                            && (path.contains("link/home/framework/tab") || path.contains("link/home/framework/top/tab"))) {
+                        original = EAPIHelper.modifyTab(original);
+                    } else if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_banner_hide_key)
+                            && (path.contains("link/page/rcmd/block/resource/multi/refresh") || path.contains("banner/get"))) {
+                        original = EAPIHelper.modifyFeedBanners(original);
                     } else if (path.contains("v1/playlist/manipulate/tracks")) {
                         original = EAPIHelper.modifyManipulate(ClassHelper.HttpParams.getParams(context, eapi), original);
                     } else if (path.contains("song/like")) {

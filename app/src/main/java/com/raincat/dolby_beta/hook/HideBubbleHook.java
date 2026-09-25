@@ -31,25 +31,77 @@ public class HideBubbleHook {
                 "com.netease.cloudmusic.widget.bubble.BubbleView",
                 "com.netease.cloudmusic.theme.ui.MenuIconShortBubbleView",
                 "com.netease.cloudmusic.theme.ui.MenuIconLongBubbleView",
-                "com.netease.cloudmusic.module.hint.view.BottomBubbleHintContainer"
+                "com.netease.cloudmusic.module.hint.view.BottomBubbleHintContainer",
+                "com.netease.cloudmusic.module.hint.view.containers.BubbleHintContainer",
+                "com.netease.cloudmusic.module.mymusic.view.RedDotView",
+                "com.netease.cloudmusic.module.mymusic.view.RedDotViewWithBorder",
+                "com.netease.cloudmusic.music.biz.circle.ui.RedDotBubbleView",
+                "com.netease.cloudmusic.module.listentogether.mic.LTRedDotView",
+                "com.netease.cloudmusic.ui.BadgeView",
+                "com.netease.cloudmusic.music.biz.voice.widget.CustomBadgeView",
+                "com.netease.cloudmusic.main.hint.BottomTabGuideBubbleNativeView",
+                "com.netease.cloudmusic.main.hint.BottomTabGuideBubbleContainer",
+                "com.netease.cloudmusic.main.hint.BottomTabDSLBubbleHintView",
+                "com.netease.cloudmusic.main.hint.FMAwardVipTabBubbleHintView",
+                "com.netease.cloudmusic.module.player.controller.BottomTabDSLBubbleHintView",
+                "com.netease.cloudmusic.module.player.controller.BottomTabDSLBubbleHintV2View",
+                "com.netease.cloudmusic.module.player.controller.hintview.TopTabDSLBubbleHintView",
+                "com.netease.cloudmusic.discovery.view.widget.titleview.DiscoveryTitleBubbleView",
+                "com.netease.cloudmusic.discovery.view.arkview.ArkTabBubbleView"
         };
 
         final List<Class<?>> bubbleClasses = new ArrayList<>();
+        XC_MethodHook hideAttachHook = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_bubble_hide_key)) {
+                    ((View) param.thisObject).setVisibility(View.GONE);
+                }
+            }
+        };
+
+        XC_MethodHook noDrawHook = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_bubble_hide_key)) {
+                    param.setResult(null);
+                }
+            }
+        };
+
         for (String name : bubbleClassNames) {
             Class<?> c = findClassIfExists(name, context.getClassLoader());
             if (c != null) {
                 bubbleClasses.add(c);
                 try {
-                    findAndHookMethod(c, "onAttachedToWindow", new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                            if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_bubble_hide_key)) {
-                                ((View) param.thisObject).setVisibility(View.GONE);
-                            }
-                        }
-                    });
+                    findAndHookMethod(c, "onAttachedToWindow", hideAttachHook);
                 } catch (Throwable ignored) {
                 }
+                try {
+                    findAndHookMethod(c, "onDraw", android.graphics.Canvas.class, noDrawHook);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+
+        // Hook 红点状态模型 (PlayerListRedDotState)
+        Class<?> redDotStateClass = findClassIfExists("com.netease.cloudmusic.module.player.redux.meta.PlayerListRedDotState", context.getClassLoader());
+        if (redDotStateClass != null) {
+            XC_MethodHook falseHook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_bubble_hide_key)) {
+                        param.setResult(false);
+                    }
+                }
+            };
+            try {
+                findAndHookMethod(redDotStateClass, "getShowDot", falseHook);
+            } catch (Throwable ignored) {
+            }
+            try {
+                findAndHookMethod(redDotStateClass, "getRedDotVisible", falseHook);
+            } catch (Throwable ignored) {
             }
         }
 
@@ -65,7 +117,11 @@ public class HideBubbleHook {
                         || name.contains("MessageBubbleView")
                         || name.contains("MenuIconShortBubbleView")
                         || name.contains("MenuIconLongBubbleView")
-                        || name.contains("BottomBubbleHintContainer")) {
+                        || name.contains("BottomBubbleHintContainer")
+                        || name.contains("RedDotView")
+                        || name.contains("RedDotBubbleView")
+                        || (name.contains("BubbleHint") && !name.contains("ChatBubble"))
+                        || (name.contains("BadgeView") && !name.contains("Chat"))) {
                     param.args[0] = View.GONE;
                 }
             }

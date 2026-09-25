@@ -49,8 +49,15 @@ public class EAPIHelper {
                     if ((flag & 0x8) == 0) {
                         item.put("fee", 0);
                         item.put("flag", 0);
-                        item.put("payed", 0);
+                        item.put("payed", 1);
                         item.remove("freeTrialInfo");
+                        item.remove("freeTrialPrivilege");
+                        item.remove("freeTimeTrialPrivilege");
+                        item.remove("freeTrialType");
+                        item.remove("cannotListenReason");
+                        item.remove("playReason");
+                        item.remove("trialMode");
+                        item.put("canExtend", true);
                         String url = item.optString("url", null);
                         if (url != null && !url.isEmpty()) {
                             item.put("code", 200);
@@ -671,10 +678,78 @@ public class EAPIHelper {
                     }
                 }
             }
-            injectPrivilege(jsonObject);
+        injectPrivilege(jsonObject);
             return jsonObject.toString();
         } catch (Throwable t) {
             XposedBridge.log("[dolby_beta] modifyBatchVip error: " + t.getMessage());
+        }
+        return original;
+    }
+
+    /**
+     * 精简Tab接口数据截断（只保留前两个Tab，如“我的”与“发现”）
+     */
+    public static String modifyTab(String original) {
+        if (original == null || original.isEmpty()) return original;
+        try {
+            JSONObject root = new JSONObject(original);
+            Object dataObj = root.opt("data");
+            if (dataObj instanceof JSONArray) {
+                JSONArray arr = (JSONArray) dataObj;
+                if (arr.length() > 2) {
+                    JSONArray trimmed = new JSONArray();
+                    trimmed.put(arr.get(0));
+                    trimmed.put(arr.get(1));
+                    root.put("data", trimmed);
+                    return root.toString();
+                }
+            } else if (dataObj instanceof JSONObject) {
+                JSONObject data = (JSONObject) dataObj;
+                for (String key : new String[]{"tabList", "tabs", "topTabList", "subTabs", "topTabs"}) {
+                    JSONArray arr = data.optJSONArray(key);
+                    if (arr != null && arr.length() > 2) {
+                        JSONArray trimmed = new JSONArray();
+                        trimmed.put(arr.get(0));
+                        trimmed.put(arr.get(1));
+                        data.put(key, trimmed);
+                    }
+                }
+                return root.toString();
+            }
+        } catch (Throwable t) {
+            DebugLogger.e("EAPIHelper", "modifyTab error: " + t.getMessage(), t);
+        }
+        return original;
+    }
+
+    /**
+     * 过滤信息流中的Banner卡片
+     */
+    public static String modifyFeedBanners(String original) {
+        if (original == null || original.isEmpty()) return original;
+        try {
+            JSONObject root = new JSONObject(original);
+            JSONObject data = root.optJSONObject("data");
+            if (data != null) {
+                JSONArray blocks = data.optJSONArray("blocks");
+                if (blocks != null) {
+                    JSONArray newBlocks = new JSONArray();
+                    for (int i = 0; i < blocks.length(); i++) {
+                        JSONObject block = blocks.optJSONObject(i);
+                        if (block == null) continue;
+                        String blockCode = block.optString("blockCode", "");
+                        String showType = block.optString("showType", "");
+                        if (blockCode.toLowerCase().contains("banner") || showType.toLowerCase().contains("banner")) {
+                            continue;
+                        }
+                        newBlocks.put(block);
+                    }
+                    data.put("blocks", newBlocks);
+                    return root.toString();
+                }
+            }
+        } catch (Throwable t) {
+            DebugLogger.e("EAPIHelper", "modifyFeedBanners error: " + t.getMessage(), t);
         }
         return original;
     }
