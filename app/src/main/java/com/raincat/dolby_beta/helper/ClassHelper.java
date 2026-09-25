@@ -378,7 +378,7 @@ public class ClassHelper {
                                         .returnType("android.util.Pair")
                                         .paramCount(5))));
                 if (!list.isEmpty()) {
-                    HttpInterceptor.clazz = list.first().getInstance(classLoader);
+                    HttpInterceptor.clazz = list.get(0).getInstance(classLoader);
                     XposedBridge.log("[dolby_beta] DexKit found HttpInterceptor: " + HttpInterceptor.clazz.getName());
                 }
             }
@@ -425,7 +425,7 @@ public class ClassHelper {
                                 .returnType("void")
                                 .paramTypes("java.io.File", "java.io.File", "long", "java.lang.Object[]")));
                 if (!dtList.isEmpty()) {
-                    MethodData md = dtList.first();
+                    MethodData md = dtList.get(0);
                     DownloadTransfer.clazz = md.getClassInstance(classLoader);
                     DownloadTransfer.checkMd5Method = md.getMethodInstance(classLoader);
                     XposedBridge.log("[dolby_beta] DexKit found DownloadTransfer: " + DownloadTransfer.clazz.getName());
@@ -440,7 +440,7 @@ public class ClassHelper {
                                 .addMethod(MethodMatcher.create().returnType("java.lang.Throwable"))
                                 .addMethod(MethodMatcher.create().returnType("java.util.List"))));
                 if (!sbList.isEmpty()) {
-                    SidebarItem.clazz = sbList.first().getInstance(classLoader);
+                    SidebarItem.clazz = sbList.get(0).getInstance(classLoader);
                     XposedBridge.log("[dolby_beta] DexKit found SidebarItem: " + SidebarItem.clazz.getName());
                 }
             }
