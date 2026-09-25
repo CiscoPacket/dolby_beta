@@ -33,10 +33,35 @@ public class PlayerBackgroundView extends BaseDialogItem {
         super.init(context, attrs);
         title = SettingHelper.background_title;
         key = SettingHelper.background_key;
+        updateSub();
         setData(false, false);
 
         setOnClickListener(view -> {
             sendBroadcast(SettingHelper.background_setting);
         });
+    }
+
+    private void updateSub() {
+        boolean enabled = SettingHelper.getInstance().getSetting(SettingHelper.beauty_background_key);
+        String url = SettingHelper.getInstance().getPictureUrl();
+        if (!enabled) {
+            sub = "当前：未启用";
+        } else if (android.text.TextUtils.isEmpty(url)) {
+            sub = "当前：已启用（未设置图片）";
+        } else if (url.startsWith("/") || url.startsWith("file://")) {
+            String clean = url.startsWith("file://") ? url.substring(7) : url;
+            sub = "当前：本地图片 (" + new java.io.File(clean).getName() + ")";
+        } else {
+            sub = "当前：网络图片 (" + url + ")";
+        }
+    }
+
+    @Override
+    public void refresh() {
+        super.refresh();
+        updateSub();
+        if (subView != null && sub != null) {
+            subView.setText(sub);
+        }
     }
 }

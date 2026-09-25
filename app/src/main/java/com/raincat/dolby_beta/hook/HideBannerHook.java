@@ -22,8 +22,6 @@ import de.robv.android.xposed.XposedHelpers;
 public class HideBannerHook {
     private String mainBannerContainerClassString = "com.netease.cloudmusic.ui.MainBannerContainer";
     public HideBannerHook(Context context, final int versionCode) {
-        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_banner_hide_key))
-            return;
         if (versionCode < 138)
             mainBannerContainerClassString = "com.netease.cloudmusic.ui.NeteaseMusicViewFlipper";
 
@@ -31,10 +29,14 @@ public class HideBannerHook {
             XposedHelpers.findAndHookMethod(mainBannerContainerClassString, context.getClassLoader(), "onAttachedToWindow", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
+                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_banner_hide_key))
+                        return;
                     View view = (View) param.thisObject;
                     ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
-                    layoutParams.height = 1;//改成0将导致无法下滑刷新
-                    view.setLayoutParams(layoutParams);
+                    if (layoutParams != null) {
+                        layoutParams.height = 1;//改成0将导致无法下滑刷新
+                        view.setLayoutParams(layoutParams);
+                    }
                     view.setVisibility(View.GONE);
                 }
             });
@@ -44,11 +46,15 @@ public class HideBannerHook {
             XposedHelpers.findAndHookConstructor(playlistBannerContainerClassString, context.getClassLoader(), Context.class, AttributeSet.class, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
+                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_banner_hide_key))
+                        return;
                     final View view = (View) param.thisObject;
                     view.post(() -> {
                         ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
-                        layoutParams.height = 0;
-                        view.setLayoutParams(layoutParams);
+                        if (layoutParams != null) {
+                            layoutParams.height = 0;
+                            view.setLayoutParams(layoutParams);
+                        }
                         view.setVisibility(View.GONE);
                     });
                 }

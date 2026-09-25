@@ -25,21 +25,22 @@ import de.robv.android.xposed.XposedHelpers;
  */
 public class CommentHotClickHook {
     public CommentHotClickHook(Context context) {
-        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
-            return;
         Class<?> commentDataClass = ClassHelper.CommentDataClass.getClazz();
         if (commentDataClass != null) {
             XposedBridge.hookAllConstructors(commentDataClass, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     super.afterHookedMethod(param);
+                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
+                        return;
                     Object object = param.thisObject;
+                    if (object == null) return;
                     Field[] fields = object.getClass().getDeclaredFields();
                     for (Field field : fields) {
                         if (Modifier.isPrivate(field.getModifiers()) && !Modifier.isFinal(field.getModifiers()) && field.getType() == int.class) {
                             field.setAccessible(true);
                             Object o = field.get(object);
-                            if ((int) o == 0)
+                            if (o instanceof Integer && (int) o == 0)
                                 field.set(object, 2);
                         }
                     }
@@ -54,12 +55,24 @@ public class CommentHotClickHook {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                         super.beforeHookedMethod(param);
-                        JSONArray array = (JSONArray) param.args[0];
-                        JSONArray array2 = new JSONArray();
-                        array2.put(array.getJSONObject(1));
-                        array2.put(array.getJSONObject(2));
-                        array2.put(array.getJSONObject(0));
-                        param.args[0] = array2;
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
+                            return;
+                        try {
+                            if (param.args != null && param.args.length > 0 && param.args[0] instanceof JSONArray) {
+                                JSONArray array = (JSONArray) param.args[0];
+                                if (array.length() >= 3) {
+                                    JSONArray array2 = new JSONArray();
+                                    array2.put(array.getJSONObject(1));
+                                    array2.put(array.getJSONObject(2));
+                                    array2.put(array.getJSONObject(0));
+                                    for (int i = 3; i < array.length(); i++) {
+                                        array2.put(array.get(i));
+                                    }
+                                    param.args[0] = array2;
+                                }
+                            }
+                        } catch (Throwable ignored) {
+                        }
                     }
                 });
         }

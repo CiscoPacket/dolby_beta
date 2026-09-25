@@ -27,7 +27,7 @@ import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 
 public class HideTabHook {
     public HideTabHook(Context context, int versionCode) {
-        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key) || versionCode < 138)
+        if (versionCode < 138)
             return;
 
         List<Method> setTabItemMethods = ClassHelper.MainActivitySuperClass.getTabItemStringMethods(context);
@@ -36,6 +36,8 @@ public class HideTabHook {
                 hookMethod(method, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(final MethodHookParam param) {
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                            return;
                         if (param.args[0] == null || ((String[]) param.args[0]).length < 2)
                             return;
                         String[] tabNames = (String[]) param.args[0];
@@ -49,14 +51,21 @@ public class HideTabHook {
                 });
             }
 
-            hookMethod(ClassHelper.MainActivitySuperClass.getViewPagerInitMethod(context), new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                    super.beforeHookedMethod(param);
-                    Intent intent = (Intent) param.args[0];
-                    intent.putExtra("SELECT_PAGE_INDEX", 0);
-                }
-            });
+            Method viewPagerInitMethod = ClassHelper.MainActivitySuperClass.getViewPagerInitMethod(context);
+            if (viewPagerInitMethod != null) {
+                hookMethod(viewPagerInitMethod, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        super.beforeHookedMethod(param);
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                            return;
+                        if (param.args != null && param.args.length > 0 && param.args[0] instanceof Intent) {
+                            Intent intent = (Intent) param.args[0];
+                            intent.putExtra("SELECT_PAGE_INDEX", 0);
+                        }
+                    }
+                });
+            }
         }
 
         if (versionCode >= 8000010) {
@@ -68,6 +77,8 @@ public class HideTabHook {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                             super.afterHookedMethod(param);
+                            if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                                return;
                             List<String> list = new ArrayList<>();
                             list.add("mine");
                             list.add("main");
@@ -83,6 +94,8 @@ public class HideTabHook {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                             super.beforeHookedMethod(param);
+                            if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                                return;
                             List<String> list = new ArrayList<>();
                             list.add("mine");
                             list.add("main");

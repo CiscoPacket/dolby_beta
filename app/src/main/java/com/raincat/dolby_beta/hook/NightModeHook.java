@@ -28,11 +28,13 @@ public class NightModeHook {
     private String themeAgentSwitchTheme = "switchTheme";
 
     public NightModeHook(Context context, int versionCode) {
-        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_night_mode_key))
-            return;
-        Class<?> superActivityClass = findClass("com.netease.cloudmusic.activity.MainActivity", context.getClassLoader());
+        Class<?> superActivityClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.activity.MainActivity", context.getClassLoader());
         while (superActivityClass != null && !superActivityClass.getName().contains("AppCompatActivity"))
             superActivityClass = superActivityClass.getSuperclass();
+
+        if (superActivityClass == null) {
+            return;
+        }
 
         String resourceRouterClassString = "com.netease.cloudmusic.theme.core.ResourceRouter";
         String themeAgentClassString = "com.netease.cloudmusic.theme.core.ThemeAgent";
@@ -54,29 +56,42 @@ public class NightModeHook {
         final Class<?> themeConfigClass = XposedHelpers.findClassIfExists(themeConfigClassString, context.getClassLoader());
         final Class<?> themeInfoClass = XposedHelpers.findClassIfExists(themeInfoClassString, context.getClassLoader());
 
+        if (resourceRouterClass == null || themeAgentClass == null || themeConfigClass == null || themeInfoClass == null) {
+            return;
+        }
+
         XposedHelpers.findAndHookMethod(superActivityClass, "onStart", new XC_MethodHook() {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 super.afterHookedMethod(param);
-                Context c = (Context) param.thisObject;
-                Object resourceRouter = XposedHelpers.callStaticMethod(resourceRouterClass, resourceRouterInstanceMethodString);
-                boolean isNight = (boolean) XposedHelpers.callMethod(resourceRouter, resourceRouterIsNightThemeMethodString);
-                int nightModeFlags = c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-                if (nightModeFlags == Configuration.UI_MODE_NIGHT_YES && !isNight) {
-                    Object themeAgent = XposedHelpers.callStaticMethod(themeAgentClass, themeAgentInstanceMethodString);
-                    Object themeInfo = XposedHelpers.newInstance(themeInfoClass, -3);
-                    XposedHelpers.callMethod(themeAgent, themeAgentSwitchTheme, c, themeInfo, true);
-                } else if (nightModeFlags == Configuration.UI_MODE_NIGHT_NO && isNight) {
-                    Object themeAgent = XposedHelpers.callStaticMethod(themeAgentClass, themeAgentInstanceMethodString);
-                    if (versionCode == 110) {
-                        int prevThemeInfo = (int) XposedHelpers.callStaticMethod(themeConfigClass, "m");
-                        Object themeInfo = XposedHelpers.newInstance(themeInfoClass, prevThemeInfo);
+                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_night_mode_key)) {
+                    return;
+                }
+                try {
+                    Context c = (Context) param.thisObject;
+                    Object resourceRouter = XposedHelpers.callStaticMethod(resourceRouterClass, resourceRouterInstanceMethodString);
+                    boolean isNight = (boolean) XposedHelpers.callMethod(resourceRouter, resourceRouterIsNightThemeMethodString);
+                    int nightModeFlags = c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+                    if (nightModeFlags == Configuration.UI_MODE_NIGHT_YES && !isNight) {
+                        Object themeAgent = XposedHelpers.callStaticMethod(themeAgentClass, themeAgentInstanceMethodString);
+                        Object themeInfo = XposedHelpers.newInstance(themeInfoClass, -3);
                         XposedHelpers.callMethod(themeAgent, themeAgentSwitchTheme, c, themeInfo, true);
-                    } else {
-                        Pair<Integer, Boolean> prevThemeInfo = (Pair<Integer, Boolean>) XposedHelpers.callStaticMethod(themeConfigClass, "getPrevThemeInfo");
-                        Object themeInfo = XposedHelpers.newInstance(themeInfoClass, prevThemeInfo.first);
-                        XposedHelpers.callMethod(themeAgent, themeAgentSwitchTheme, c, themeInfo, true);
+                    } else if (nightModeFlags == Configuration.UI_MODE_NIGHT_NO && isNight) {
+                        Object themeAgent = XposedHelpers.callStaticMethod(themeAgentClass, themeAgentInstanceMethodString);
+                        if (versionCode == 110) {
+                            int prevThemeInfo = (int) XposedHelpers.callStaticMethod(themeConfigClass, "m");
+                            Object themeInfo = XposedHelpers.newInstance(themeInfoClass, prevThemeInfo);
+                            XposedHelpers.callMethod(themeAgent, themeAgentSwitchTheme, c, themeInfo, true);
+                        } else {
+                            Pair<Integer, Boolean> prevThemeInfo = (Pair<Integer, Boolean>) XposedHelpers.callStaticMethod(themeConfigClass, "getPrevThemeInfo");
+                            if (prevThemeInfo != null && prevThemeInfo.first != null) {
+                                Object themeInfo = XposedHelpers.newInstance(themeInfoClass, prevThemeInfo.first);
+                                XposedHelpers.callMethod(themeAgent, themeAgentSwitchTheme, c, themeInfo, true);
+                            }
+                        }
                     }
+                } catch (Throwable t) {
+                    // ignore theme switch errors
                 }
             }
         });
