@@ -3,7 +3,7 @@ name: Build Modified APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
   build:
@@ -36,7 +36,7 @@ jobs:
         
     - name: Update UnblockNeteaseMusic
       run: |
-        git clone --depth=1 --branch enhanced https://github.com/UnblockNeteaseMusic/server.git
+        git clone --depth=1 --branch feat/adapt-xeapi https://github.com/ITManCHINA/server.git
         cd server
         git archive --format=zip HEAD -o ../UnblockNeteaseMusic.zip
         cd ..

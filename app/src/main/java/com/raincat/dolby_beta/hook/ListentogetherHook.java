@@ -14,6 +14,7 @@ import de.robv.android.xposed.XposedBridge;
 
 import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 import static de.robv.android.xposed.XposedHelpers.findClass;
+import static de.robv.android.xposed.XposedHelpers.findClassIfExists;
 
 
 public class ListentogetherHook {
@@ -22,39 +23,39 @@ public class ListentogetherHook {
 
     public ListentogetherHook(Context context,int versionCode) {
         //旧版写法
-        if (versionCode > 8007090) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.f2", context.getClassLoader()),
-                    "v", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode > 8007075) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.x", context.getClassLoader()),
-                    "v", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode > 8007070) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.y", context.getClassLoader()),
-                    "u", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode > 8007055) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.x", context.getClassLoader()),
-                    "u", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode > 8007026) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.w", context.getClassLoader()),
-                    "o", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode > 8007004) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.w", context.getClassLoader()),
-                    "n", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode > 8006076) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.u", context.getClassLoader()),
-                    "m", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode > 8006045) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.r", context.getClassLoader()),
-                    "l1", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode > 8006040) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.p", context.getClassLoader()),
-                    "h1", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode > 8006019) {
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.x", context.getClassLoader()),
-                    "n1", XC_MethodReplacement.returnConstant(true));
-        }else if (versionCode >= 8006000){
-            findAndHookMethod(findClass("com.netease.cloudmusic.module.listentogether.x", context.getClassLoader()),
-                    "m1", XC_MethodReplacement.returnConstant(true));
+        Class<?> f2 = findClassIfExists("com.netease.cloudmusic.module.listentogether.f2", context.getClassLoader());
+        if (f2 != null) {
+            findAndHookMethod(f2, "v", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode > 8007075) {
+            Class<?> x = findClassIfExists("com.netease.cloudmusic.module.listentogether.x", context.getClassLoader());
+            if (x != null) findAndHookMethod(x, "v", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode > 8007070) {
+            Class<?> y = findClassIfExists("com.netease.cloudmusic.module.listentogether.y", context.getClassLoader());
+            if (y != null) findAndHookMethod(y, "u", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode > 8007055) {
+            Class<?> x = findClassIfExists("com.netease.cloudmusic.module.listentogether.x", context.getClassLoader());
+            if (x != null) findAndHookMethod(x, "u", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode > 8007026) {
+            Class<?> w = findClassIfExists("com.netease.cloudmusic.module.listentogether.w", context.getClassLoader());
+            if (w != null) findAndHookMethod(w, "o", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode > 8007004) {
+            Class<?> w = findClassIfExists("com.netease.cloudmusic.module.listentogether.w", context.getClassLoader());
+            if (w != null) findAndHookMethod(w, "n", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode > 8006076) {
+            Class<?> u = findClassIfExists("com.netease.cloudmusic.module.listentogether.u", context.getClassLoader());
+            if (u != null) findAndHookMethod(u, "m", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode > 8006045) {
+            Class<?> r = findClassIfExists("com.netease.cloudmusic.module.listentogether.r", context.getClassLoader());
+            if (r != null) findAndHookMethod(r, "l1", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode > 8006040) {
+            Class<?> p = findClassIfExists("com.netease.cloudmusic.module.listentogether.p", context.getClassLoader());
+            if (p != null) findAndHookMethod(p, "h1", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode > 8006019) {
+            Class<?> x = findClassIfExists("com.netease.cloudmusic.module.listentogether.x", context.getClassLoader());
+            if (x != null) findAndHookMethod(x, "n1", XC_MethodReplacement.returnConstant(true));
+        } else if (versionCode >= 8006000){
+            Class<?> x = findClassIfExists("com.netease.cloudmusic.module.listentogether.x", context.getClassLoader());
+            if (x != null) findAndHookMethod(x, "m1", XC_MethodReplacement.returnConstant(true));
         }
         //新版写法
         listening = context.getSharedPreferences("LISTEN_TOGETHER", Context.MODE_MULTI_PROCESS);
