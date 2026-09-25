@@ -174,7 +174,7 @@ public class SettingHelper {
     public static final String beauty_sidebar_hide_sub = "部分Item需配合“设置”->“侧边栏管理”开关生效";
 
     public static final String background_url_key = "β_background_url_key";
-    public static final String background_url_title = "图片URL(请自行上传至图床)";
+    public static final String background_url_title = "自定义背景 (URL 或本地路径)";
     public static final String background_url_default = "";
 
     public static final String background_blur_key = "β_background_blur_key";

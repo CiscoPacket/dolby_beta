@@ -58,4 +58,14 @@ public class BackgroundPictureUrlView extends BaseDialogInputItem {
             }
         });
     }
+
+    @Override
+    public void refresh() {
+        super.refresh();
+        String current = SettingHelper.getInstance().getPictureUrl();
+        if (editView != null && !editView.getText().toString().equals(current)) {
+            editView.setText(current);
+            editView.setSelection(editView.getText().length());
+        }
+    }
 }
