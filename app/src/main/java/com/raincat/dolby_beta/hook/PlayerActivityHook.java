@@ -61,11 +61,9 @@ public class PlayerActivityHook {
                         final View decorView = activity.getWindow().getDecorView();
                         decorView.post(() -> {
                             applyBlackHideFromDecorView(decorView);
-                            applyKsongHideFromDecorView(decorView);
                         });
                         decorView.postDelayed(() -> {
                             applyBlackHideFromDecorView(decorView);
-                            applyKsongHideFromDecorView(decorView);
                         }, 500);
                     }
                 }
@@ -81,7 +79,6 @@ public class PlayerActivityHook {
                             sLastContext = new WeakReference<>(activity);
                             View decorView = activity.getWindow().getDecorView();
                             applyBlackHideFromDecorView(decorView);
-                            applyKsongHideFromDecorView(decorView);
                         }
                         reloadBackground();
                     }
@@ -461,19 +458,6 @@ public class PlayerActivityHook {
             }
         } catch (Throwable ignored) {
         }
-        try {
-            ImageView iv = (ImageView) XposedHelpers.getObjectField(view, "imageView");
-            if (iv != null) {
-                ViewGroup.LayoutParams lp = iv.getLayoutParams();
-                if (lp != null && (lp.width != ViewGroup.LayoutParams.MATCH_PARENT || lp.height != ViewGroup.LayoutParams.MATCH_PARENT)) {
-                    lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-                    lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
-                    iv.setLayoutParams(lp);
-                }
-                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            }
-        } catch (Throwable ignored) {
-        }
     }
 
     private static void hideVinylDisc(ViewGroup flipper) {
@@ -512,7 +496,7 @@ public class PlayerActivityHook {
                     }
                 }
 
-                // 将除封面外的外圈底盘/光斑/遮罩设为不可见
+                // 将除封面外的外圈底盘/光斑/遮罩设为不可见，封面保持原始尺寸与居中位置不偏移
                 for (ImageView iv : imageViews) {
                     if (iv != albumImage) {
                         if (iv.getVisibility() != View.INVISIBLE) {
@@ -520,14 +504,6 @@ public class PlayerActivityHook {
                         }
                     }
                 }
-
-                ViewGroup.LayoutParams lp = albumImage.getLayoutParams();
-                if (lp != null && (lp.width != ViewGroup.LayoutParams.MATCH_PARENT || lp.height != ViewGroup.LayoutParams.MATCH_PARENT)) {
-                    lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-                    lp.height = ViewGroup.LayoutParams.MATCH_PARENT;
-                    albumImage.setLayoutParams(lp);
-                }
-                albumImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
             }
         }
     }
@@ -555,49 +531,6 @@ public class PlayerActivityHook {
             } else if (c instanceof ViewGroup) {
                 findImageViews((ViewGroup) c, out);
             }
-        }
-    }
-
-    private static void applyKsongHideFromDecorView(View root) {
-        if (root == null || !SettingHelper.getInstance().isEnable(SettingHelper.beauty_ksong_hide_key)) {
-            return;
-        }
-        if (root instanceof ViewGroup) {
-            ViewGroup vg = (ViewGroup) root;
-            for (int i = 0; i < vg.getChildCount(); i++) {
-                applyKsongHideFromDecorView(vg.getChildAt(i));
-            }
-        }
-        CharSequence desc = root.getContentDescription();
-        if (desc != null) {
-            String d = desc.toString();
-            if (d.contains("K歌") || d.contains("音街") || d.contains("铃声") || d.contains("伴奏") || d.contains("唱这首歌") || d.equals("唱")) {
-                root.setVisibility(View.GONE);
-                ViewGroup.LayoutParams lp = root.getLayoutParams();
-                if (lp != null) {
-                    lp.width = 0;
-                    lp.height = 0;
-                    root.setLayoutParams(lp);
-                }
-            }
-        }
-        try {
-            if (root.getId() != View.NO_ID && root.getResources() != null) {
-                String entryName = root.getResources().getResourceEntryName(root.getId());
-                if (entryName != null) {
-                    String lower = entryName.toLowerCase();
-                    if (lower.contains("ksong") || lower.contains("karaoke") || lower.contains("sing_song") || lower.contains("ring_tone")) {
-                        root.setVisibility(View.GONE);
-                        ViewGroup.LayoutParams lp = root.getLayoutParams();
-                        if (lp != null) {
-                            lp.width = 0;
-                            lp.height = 0;
-                            root.setLayoutParams(lp);
-                        }
-                    }
-                }
-            }
-        } catch (Throwable ignored) {
         }
     }
 

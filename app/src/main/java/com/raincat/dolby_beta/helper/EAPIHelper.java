@@ -690,7 +690,7 @@ public class EAPIHelper {
     }
 
     /**
-     * 精简Tab接口数据截断（只保留前两个Tab，如“我的”与“发现”）
+     * 精简Tab接口数据截断（只保留“我的”与“发现/首页”，排除搜索、漫游等）
      */
     public static String modifyTab(String original) {
         if (original == null || original.isEmpty()) return original;
@@ -700,10 +700,7 @@ public class EAPIHelper {
             if (dataObj instanceof JSONArray) {
                 JSONArray arr = (JSONArray) dataObj;
                 if (arr.length() > 2) {
-                    JSONArray trimmed = new JSONArray();
-                    trimmed.put(arr.get(0));
-                    trimmed.put(arr.get(1));
-                    root.put("data", trimmed);
+                    root.put("data", filterTabJsonArray(arr));
                     return root.toString();
                 }
             } else if (dataObj instanceof JSONObject) {
@@ -711,10 +708,7 @@ public class EAPIHelper {
                 for (String key : new String[]{"tabList", "tabs", "topTabList", "subTabs", "topTabs"}) {
                     JSONArray arr = data.optJSONArray(key);
                     if (arr != null && arr.length() > 2) {
-                        JSONArray trimmed = new JSONArray();
-                        trimmed.put(arr.get(0));
-                        trimmed.put(arr.get(1));
-                        data.put(key, trimmed);
+                        data.put(key, filterTabJsonArray(arr));
                     }
                 }
                 return root.toString();
@@ -725,34 +719,85 @@ public class EAPIHelper {
         return original;
     }
 
+    private static JSONArray filterTabJsonArray(JSONArray arr) {
+        if (arr == null || arr.length() <= 2) return arr;
+        JSONObject homeObj = null;
+        JSONObject mineObj = null;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject item = arr.optJSONObject(i);
+            if (item == null) continue;
+            String text = item.toString().toLowerCase();
+            if (isJsonTabMine(text)) {
+                mineObj = item;
+            } else if (isJsonTabHome(text)) {
+                if (homeObj == null) homeObj = item;
+            }
+        }
+        try {
+            if (homeObj == null && arr.length() > 0) homeObj = arr.optJSONObject(0);
+            if (mineObj == null && arr.length() > 1) mineObj = arr.optJSONObject(arr.length() - 1);
+
+            JSONArray newArr = new JSONArray();
+            if (homeObj != null) newArr.put(homeObj);
+            if (mineObj != null && mineObj != homeObj) newArr.put(mineObj);
+
+            if (newArr.length() >= 2) return newArr;
+        } catch (Throwable ignored) {
+        }
+        return arr;
+    }
+
+    private static boolean isJsonTabHome(String s) {
+        if (s == null) return false;
+        if (s.contains("search") || s.contains("搜索") || s.contains("roam") || s.contains("漫游") || s.contains("dynamic") || s.contains("动态")) {
+            return false;
+        }
+        return s.contains("find") || s.contains("发现") || s.contains("home") || s.contains("首页") || s.contains("main");
+    }
+
+    private static boolean isJsonTabMine(String s) {
+        if (s == null) return false;
+        return s.contains("mine") || s.contains("我的") || s.contains("profile") || s.contains("user");
+    }
+
     /**
-     * 过滤信息流中的Banner卡片
+     * 评论区优先显示最热：保证数据中 sortType=2 并将最热排在首位
      */
-    public static String modifyFeedBanners(String original) {
+    public static String modifyCommentHot(String original) {
         if (original == null || original.isEmpty()) return original;
         try {
             JSONObject root = new JSONObject(original);
             JSONObject data = root.optJSONObject("data");
             if (data != null) {
-                JSONArray blocks = data.optJSONArray("blocks");
-                if (blocks != null) {
-                    JSONArray newBlocks = new JSONArray();
-                    for (int i = 0; i < blocks.length(); i++) {
-                        JSONObject block = blocks.optJSONObject(i);
-                        if (block == null) continue;
-                        String blockCode = block.optString("blockCode", "");
-                        String showType = block.optString("showType", "");
-                        if (blockCode.toLowerCase().contains("banner") || showType.toLowerCase().contains("banner")) {
-                            continue;
-                        }
-                        newBlocks.put(block);
-                    }
-                    data.put("blocks", newBlocks);
-                    return root.toString();
+                if (data.has("sortType")) {
+                    data.put("sortType", 2);
                 }
+                JSONArray sortTypeList = data.optJSONArray("sortTypeList");
+                if (sortTypeList != null && sortTypeList.length() > 1) {
+                    JSONObject hotItem = null;
+                    JSONArray newSortTypeList = new JSONArray();
+                    for (int i = 0; i < sortTypeList.length(); i++) {
+                        JSONObject item = sortTypeList.optJSONObject(i);
+                        if (item == null) continue;
+                        if (item.optInt("sortType", -1) == 2 || item.optString("sortTypeName").contains("热")) {
+                            hotItem = item;
+                        }
+                    }
+                    if (hotItem != null) {
+                        newSortTypeList.put(hotItem);
+                        for (int i = 0; i < sortTypeList.length(); i++) {
+                            JSONObject item = sortTypeList.optJSONObject(i);
+                            if (item != null && item != hotItem) {
+                                newSortTypeList.put(item);
+                            }
+                        }
+                        data.put("sortTypeList", newSortTypeList);
+                    }
+                }
+                return root.toString();
             }
         } catch (Throwable t) {
-            DebugLogger.e("EAPIHelper", "modifyFeedBanners error: " + t.getMessage(), t);
+            DebugLogger.e("EAPIHelper", "modifyCommentHot error: " + t.getMessage(), t);
         }
         return original;
     }

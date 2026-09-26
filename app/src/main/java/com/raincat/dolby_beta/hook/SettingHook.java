@@ -39,11 +39,8 @@ import com.raincat.dolby_beta.model.SidebarEnum;
 import com.raincat.dolby_beta.utils.Tools;
 import com.raincat.dolby_beta.view.BaseDialogInputItem;
 import com.raincat.dolby_beta.view.BaseDialogItem;
-import com.raincat.dolby_beta.view.beauty.BeautyBannerHideView;
 import com.raincat.dolby_beta.view.beauty.BeautyBlackHideView;
-import com.raincat.dolby_beta.view.beauty.BeautyBubbleHideView;
 import com.raincat.dolby_beta.view.beauty.BeautyCommentHotView;
-import com.raincat.dolby_beta.view.beauty.BeautyKSongHideView;
 import com.raincat.dolby_beta.view.beauty.BeautyNightModeView;
 import com.raincat.dolby_beta.view.beauty.BeautyRotationView;
 import com.raincat.dolby_beta.view.beauty.BeautySidebarHideItem;
@@ -1735,14 +1732,11 @@ public class SettingHook {
         dialogBeautyRoot.addView(new BeautyTitleView(context));
         dialogBeautyRoot.addView(new BeautyNightModeView(context));
         dialogBeautyRoot.addView(new BeautyTabHideView(context));
-        dialogBeautyRoot.addView(new BeautyBannerHideView(context));
-        dialogBeautyRoot.addView(new BeautyBubbleHideView(context));
-        dialogBeautyRoot.addView(new BeautyKSongHideView(context));
+        dialogBeautyRoot.addView(beautySidebarHideView);
         dialogBeautyRoot.addView(new BeautyBlackHideView(context));
         dialogBeautyRoot.addView(new BeautyRotationView(context));
         dialogBeautyRoot.addView(new BeautyCommentHotView(context));
         dialogBeautyRoot.addView(playerBackgroundView);
-        dialogBeautyRoot.addView(beautySidebarHideView);
         showLightDialog(context, scrollView, true,
                 "仅保存", (dialogInterface, i) -> refresh(),
                 "保存并重启", (dialogInterface, i) -> restartApplication(context));
