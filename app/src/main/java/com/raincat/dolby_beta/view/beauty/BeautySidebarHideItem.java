@@ -40,9 +40,12 @@ public class BeautySidebarHideItem extends BaseDialogItem {
         setData(true, isChecked);
         setOnClickListener(view -> {
             boolean newChecked = !checkBox.isChecked();
+            if (sidebarSettingMap != null) {
+                sidebarSettingMap.put(sidebarKey, newChecked);
+            }
             SettingHelper.getInstance().setSidebarSetting(key, newChecked);
-            boolean currentChecked = sidebarSettingMap != null && Boolean.TRUE.equals(sidebarSettingMap.get(sidebarKey));
-            setData(true, currentChecked);
+            setData(true, newChecked);
+            sendBroadcast(SettingHelper.refresh_setting);
         });
     }
 }
