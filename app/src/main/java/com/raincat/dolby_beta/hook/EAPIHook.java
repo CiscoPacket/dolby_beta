@@ -40,9 +40,12 @@ public class EAPIHook {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 try {
-                    //代理和黑胶都未开启
-                    if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)
-                            && !SettingHelper.getInstance().isEnable(SettingHelper.proxy_master_key))
+                    // 检查是否有任何相关功能开启
+                    boolean needProcess = SettingHelper.getInstance().isEnable(SettingHelper.black_key)
+                            || SettingHelper.getInstance().isEnable(SettingHelper.proxy_master_key)
+                            || SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key)
+                            || SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key);
+                    if (!needProcess)
                         return;
                     //返回参数不对
                     if ((!(param.getResult() instanceof String) && !(param.getResult() instanceof JSONObject)))
@@ -94,9 +97,6 @@ public class EAPIHook {
                     } else if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key)
                             && (path.contains("link/home/framework/tab") || path.contains("link/home/framework/top/tab"))) {
                         original = EAPIHelper.modifyTab(original);
-                    } else if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_banner_hide_key)
-                            && (path.contains("link/page/rcmd/block/resource/multi/refresh") || path.contains("banner/get"))) {
-                        original = EAPIHelper.modifyFeedBanners(original);
                     } else if (path.contains("v1/playlist/manipulate/tracks")) {
                         original = EAPIHelper.modifyManipulate(ClassHelper.HttpParams.getParams(context, eapi), original);
                     } else if (path.contains("song/like")) {
@@ -171,6 +171,9 @@ public class EAPIHook {
                         String songid = EAPIHelper.decrypt(ClassHelper.HttpParams.getParams(context, eapi).get("params")).getString("songid");
                         EAPIHelper.uploadCloud(songid);
                         original = CloudDao.getInstance(context).getSong(Integer.parseInt(songid));
+                    } else if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key)
+                            && (path.contains("resource/comments") || path.contains("commentInfo/list") || path.contains("comment/floor/get"))) {
+                        original = EAPIHelper.modifyCommentHot(original);
                     } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) &&
                             (path.contains("song/detail") || path.contains("playlist/detail") || path.contains("album") || path.contains("recommend/songs") || path.contains("search") || path.contains("toplist") || path.contains("personalized") || path.contains("discovery"))) {
                         original = EAPIHelper.injectUniversalPrivilege(original);

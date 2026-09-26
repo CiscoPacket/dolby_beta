@@ -21,8 +21,6 @@ import com.raincat.dolby_beta.hook.CommentHotClickHook;
 import com.raincat.dolby_beta.hook.DownloadMD5Hook;
 import com.raincat.dolby_beta.hook.EAPIHook;
 import com.raincat.dolby_beta.hook.GrayHook;
-import com.raincat.dolby_beta.hook.HideBannerHook;
-import com.raincat.dolby_beta.hook.HideBubbleHook;
 import com.raincat.dolby_beta.hook.HideSidebarHook;
 import com.raincat.dolby_beta.hook.HideTabHook;
 import com.raincat.dolby_beta.hook.InternalDialogHook;
@@ -108,8 +106,6 @@ public class HookOther {
                             new NightModeHook(context, versionCode);
                             new HideTabHook(context, versionCode);
                             new HideSidebarHook(context, versionCode);
-                            new HideBannerHook(context, versionCode);
-                            new HideBubbleHook(context);
                             new PlayerActivityHook(context, versionCode);
                             new CommentHotClickHook(context);
                             new AdExtraHook();
