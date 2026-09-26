@@ -5,9 +5,6 @@ import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
-
-import androidx.recyclerview.widget.RecyclerView;
-
 import com.raincat.dolby_beta.helper.ClassHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.model.SidebarEnum;
@@ -121,10 +118,11 @@ public class HideSidebarHook {
                                 if (!holderName.contains(".biz.sidebar.") && !itemName.contains("AccountItem")) {
                                     return;
                                 }
-                                if (!(param.thisObject instanceof RecyclerView.ViewHolder)) {
-                                    return;
+                                View itemView = null;
+                                try {
+                                    itemView = (View) XposedHelpers.getObjectField(param.thisObject, "itemView");
+                                } catch (Throwable ignored) {
                                 }
-                                View itemView = ((RecyclerView.ViewHolder) param.thisObject).itemView;
                                 if (itemView == null) return;
 
                                 if (shouldHideItem(item)) {
