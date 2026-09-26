@@ -67,33 +67,33 @@ public class EAPIHook {
                         return;
 
                     if (path.contains("song/enhance/player/url")) {
-                        original = EAPIHelper.modifyPlayer(original);
                         if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
+                            original = EAPIHelper.modifyPlayer(original);
                             original = EAPIHelper.injectUniversalPrivilege(original);
                         }
                     } else if (path.contains("song/enhance/download/url")) {
-                        try {
-                            JSONObject jsonObject = new JSONObject(original);
-                            Object dataObj = jsonObject.opt("data");
-                            if (dataObj instanceof JSONObject) {
-                                JSONArray array = new JSONArray();
-                                array.put(dataObj);
-                                jsonObject.put("data", array);
-                                original = EAPIHelper.modifyPlayer(jsonObject.toString());
-                                JSONObject modifiedObj = new JSONObject(original);
-                                JSONArray modArr = modifiedObj.optJSONArray("data");
-                                if (modArr != null && modArr.length() > 0) {
-                                    modifiedObj.put("data", modArr.getJSONObject(0));
-                                    original = modifiedObj.toString();
+                        if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
+                            try {
+                                JSONObject jsonObject = new JSONObject(original);
+                                Object dataObj = jsonObject.opt("data");
+                                if (dataObj instanceof JSONObject) {
+                                    JSONArray array = new JSONArray();
+                                    array.put(dataObj);
+                                    jsonObject.put("data", array);
+                                    original = EAPIHelper.modifyPlayer(jsonObject.toString());
+                                    JSONObject modifiedObj = new JSONObject(original);
+                                    JSONArray modArr = modifiedObj.optJSONArray("data");
+                                    if (modArr != null && modArr.length() > 0) {
+                                        modifiedObj.put("data", modArr.getJSONObject(0));
+                                        original = modifiedObj.toString();
+                                    }
+                                } else if (dataObj instanceof JSONArray) {
+                                    original = EAPIHelper.modifyPlayer(jsonObject.toString());
                                 }
-                            } else if (dataObj instanceof JSONArray) {
-                                original = EAPIHelper.modifyPlayer(jsonObject.toString());
-                            }
-                            if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
                                 original = EAPIHelper.injectUniversalPrivilege(original);
+                            } catch (Throwable t) {
+                                DebugLogger.e("EAPIHook", "download/url modify error: " + t.getMessage(), t);
                             }
-                        } catch (Throwable t) {
-                            DebugLogger.e("EAPIHook", "download/url modify error: " + t.getMessage(), t);
                         }
                     } else if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key)
                             && (path.contains("link/home/framework/tab") || path.contains("link/home/framework/top/tab"))) {
@@ -105,7 +105,7 @@ public class EAPIHook {
                         original = EAPIHelper.modifyManipulate(ClassHelper.HttpParams.getParams(context, eapi), original);
                     } else if (path.contains("song/like")) {
                         original = EAPIHelper.modifyLike(ClassHelper.HttpParams.getParams(context, eapi), original);
-                    } else if (path.contains("usertool/sound") || path.contains("sound/mobile") || path.contains("sound/twinkle") || path.contains("sound/material") || path.contains("page=audio_effect") || path.contains("audio/effect") || path.contains("sound/effect") || path.contains("sound/info")) {
+                    } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && (path.contains("usertool/sound") || path.contains("sound/mobile") || path.contains("sound/twinkle") || path.contains("sound/material") || path.contains("page=audio_effect") || path.contains("audio/effect") || path.contains("sound/effect") || path.contains("sound/info"))) {
                         original = EAPIHelper.modifyEffect(original);
                     } else if (SettingHelper.getInstance().isEnable(SettingHelper.black_key) && (path.contains("memberlogo") || path.contains("vip/logo") || path.contains("vipnewcenter"))) {
                         original = EAPIHelper.modifyMemberLogo(original);

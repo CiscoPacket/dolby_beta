@@ -33,8 +33,11 @@ public class HideTabHook {
         if (versionCode < 138)
             return;
 
-        // 1. 适配新版网易云 (9.x 统一Tab数据源提供者 th0.o)
-        Class<?> th0Class = XposedHelpers.findClassIfExists("th0.o", context.getClassLoader());
+        // 1. 适配新版网易云 (9.x 统一Tab数据源提供者，DexKit动态解析或th0.o)
+        Class<?> th0Class = ClassHelper.TabManager.getClazz(context);
+        if (th0Class == null) {
+            th0Class = XposedHelpers.findClassIfExists("th0.o", context.getClassLoader());
+        }
         if (th0Class != null) {
             // A. 获取全部 Tab code 列表 (Z1)
             try {

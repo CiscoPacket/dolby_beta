@@ -151,10 +151,14 @@ public class HookOther {
                             new ProxyHook(context, true);
                             IntentFilter intentFilter = new IntentFilter();
                             intentFilter.addAction(msg_hook_play_process);
+                            intentFilter.addAction(SettingHelper.refresh_setting);
                             context.registerReceiver(new BroadcastReceiver() {
                                 @Override
                                 public void onReceive(Context c, Intent intent) {
-                                    if (msg_hook_play_process.equals(intent.getAction())) {
+                                    if (intent == null) return;
+                                    if (SettingHelper.refresh_setting.equals(intent.getAction())) {
+                                        SettingHelper.getInstance().refreshSetting(context);
+                                    } else if (msg_hook_play_process.equals(intent.getAction())) {
                                         ClassHelper.getCacheClassList(context, versionCode, () -> {
                                             new EAPIHook(context);
                                             new CdnHook(context, versionCode);
