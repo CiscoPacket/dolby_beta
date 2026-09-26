@@ -5,7 +5,9 @@ import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
+
 import com.raincat.dolby_beta.helper.ClassHelper;
+import com.raincat.dolby_beta.helper.EAPIHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.model.SidebarEnum;
 
@@ -22,8 +24,8 @@ import de.robv.android.xposed.XposedHelpers;
 /**
  * <pre>
  *     author : RainCat & Cisco
- *     desc   : 侧边栏精简 (适配网易云9.x新框架与旧版)
- *     version: 2.0
+ *     desc   : 侧边栏精简 (适配9.6.05 React Native 侧边栏、Native 数据与渲染层及旧版)
+ *     version: 3.0
  * </pre>
  */
 public class HideSidebarHook {
@@ -52,14 +54,63 @@ public class HideSidebarHook {
             SidebarEnum.setSidebarEnum(enumConstants);
         }
 
-        // 2. 9.x+ 新版侧边栏：Hook 数据层 (com.netease.cloudmusic.music.biz.sidebar.account.j)
+        // 2. 9.6+ React Native 侧边栏 Native View 层 Hook (ReactTextView)
+        Class<?> rtvClass = XposedHelpers.findClassIfExists("com.facebook.react.views.text.ReactTextView", context.getClassLoader());
+        if (rtvClass != null) {
+            XC_MethodHook rtvHook = new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!SettingHelper.getInstance().isSidebarHideEnable()) return;
+                    if (param.args == null || param.args.length == 0 || param.args[0] == null) return;
+                    String text = param.args[0].toString().trim();
+                    if (text.isEmpty()) return;
+                    HashMap<String, Boolean> map = SettingHelper.getInstance().getSidebarSetting(null);
+                    if (map == null || map.isEmpty()) return;
+                    if (EAPIHelper.shouldHideSidebarString(text, map)) {
+                        View tv = (View) param.thisObject;
+                        hideRnRowContainer(tv);
+                    }
+                }
+            };
+            try {
+                XposedBridge.hookAllMethods(rtvClass, "setText", rtvHook);
+            } catch (Throwable ignored) {
+            }
+        }
+
+        // 3. 9.6+ React Native Bridge 模块 Hook (NeteaseMusicApiModule)
+        Class<?> nmApiModuleClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.music.biz.rn.reactpackage.nativemodule.NeteaseMusicApiModule", context.getClassLoader());
+        if (nmApiModuleClass != null) {
+            for (Method m : nmApiModuleClass.getDeclaredMethods()) {
+                if ("fetchByApi".equals(m.getName()) || "fetchCurrentApi".equals(m.getName())) {
+                    try {
+                        XposedBridge.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                                if (!SettingHelper.getInstance().isSidebarHideEnable()) return;
+                                if (param.args != null) {
+                                    for (Object arg : param.args) {
+                                        if (arg != null && arg.getClass().getName().contains("Promise")) {
+                                            hookPromiseResolve(arg);
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+        }
+
+        // 4. 9.x+ 新版侧边栏：Hook 数据层 (com.netease.cloudmusic.music.biz.sidebar.account.j)
         Class<?> jClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.music.biz.sidebar.account.j", context.getClassLoader());
         if (jClass != null) {
             XposedBridge.hookAllConstructors(jClass, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     super.beforeHookedMethod(param);
-                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_sidebar_hide_key)) return;
+                    if (!SettingHelper.getInstance().isSidebarHideEnable()) return;
                     if (param.args != null && param.args.length == 2 && param.args[1] instanceof List) {
                         List<?> list = (List<?>) param.args[1];
                         List<Object> newList = new ArrayList<>();
@@ -78,7 +129,7 @@ public class HideSidebarHook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         super.afterHookedMethod(param);
-                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_sidebar_hide_key)) return;
+                        if (!SettingHelper.getInstance().isSidebarHideEnable()) return;
                         Object result = param.getResult();
                         if (result instanceof List) {
                             List<?> list = (List<?>) result;
@@ -101,7 +152,7 @@ public class HideSidebarHook {
             }
         }
 
-        // 3. 9.x+ 新版侧边栏：Hook 渲染层 ViewHolder.render 动态隐藏与折叠
+        // 5. 9.x+ 新版侧边栏：Hook 渲染层 ViewHolder.render 动态隐藏与折叠
         Class<?> tbvhClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.common.nova.autobind.TypeBindingViewHolder", context.getClassLoader());
         if (tbvhClass != null) {
             for (Method m : tbvhClass.getDeclaredMethods()) {
@@ -150,14 +201,14 @@ public class HideSidebarHook {
             }
         }
 
-        // 4. 兼容 7.x-8.x 旧版侧边栏构造函数 Hook
+        // 6. 兼容 7.x-8.x 旧版侧边栏构造函数 Hook
         Class<?> legacySidebarItemClass = ClassHelper.SidebarItem.getClazz(context);
         if (legacySidebarItemClass != null) {
             XposedBridge.hookAllConstructors(legacySidebarItemClass, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     super.beforeHookedMethod(param);
-                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_sidebar_hide_key)) return;
+                    if (!SettingHelper.getInstance().isSidebarHideEnable()) return;
                     HashMap<String, Boolean> map = SettingHelper.getInstance().getSidebarSetting(null);
                     if (param.args.length == 2 && param.args[1] instanceof List) {
                         List<Object> objectList = (List<Object>) param.args[1];
@@ -185,7 +236,7 @@ public class HideSidebarHook {
             });
         }
 
-        // 5. 兼容早期 6.x 以下老版本
+        // 7. 兼容早期 6.x 以下老版本
         if (versionCode < 7003010) {
             Class<?> mainDrawerClass = XposedHelpers.findClassIfExists(classMainDrawerString, context.getClassLoader());
             if (mainDrawerClass != null) {
@@ -199,9 +250,57 @@ public class HideSidebarHook {
         }
     }
 
+    private static void hideRnRowContainer(View tv) {
+        if (tv == null) return;
+        tv.setVisibility(View.GONE);
+        View current = tv;
+        for (int i = 0; i < 4; i++) {
+            android.view.ViewParent parent = current.getParent();
+            if (!(parent instanceof ViewGroup)) break;
+            ViewGroup vg = (ViewGroup) parent;
+            String name = vg.getClass().getName();
+            if (vg.getChildCount() > 4 || name.contains("ScrollView") || name.contains("RecyclerView") || name.contains("ViewPager")) {
+                collapseView(current);
+                break;
+            }
+            current = vg;
+            collapseView(current);
+        }
+    }
+
+    private static void collapseView(View view) {
+        if (view == null) return;
+        view.setVisibility(View.GONE);
+        ViewGroup.LayoutParams lp = view.getLayoutParams();
+        if (lp != null) {
+            lp.height = 0;
+            lp.width = 0;
+            view.setLayoutParams(lp);
+        }
+    }
+
+    private static void hookPromiseResolve(Object promise) {
+        if (promise == null) return;
+        try {
+            XposedHelpers.findAndHookMethod(promise.getClass(), "resolve", Object.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!SettingHelper.getInstance().isSidebarHideEnable()) return;
+                    if (param.args != null && param.args.length > 0 && param.args[0] != null) {
+                        Object result = param.args[0];
+                        if (result instanceof String) {
+                            param.args[0] = EAPIHelper.modifySidebar((String) result);
+                        }
+                    }
+                }
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
     private boolean shouldHideItem(Object accountItem) {
         if (accountItem == null) return false;
-        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_sidebar_hide_key)) return false;
+        if (!SettingHelper.getInstance().isSidebarHideEnable()) return false;
         HashMap<String, Boolean> settingMap = SettingHelper.getInstance().getSidebarSetting(null);
         if (settingMap == null || settingMap.isEmpty()) return false;
         try {

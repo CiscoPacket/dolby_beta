@@ -801,4 +801,105 @@ public class EAPIHelper {
         }
         return original;
     }
+
+    /**
+     * 侧边栏精简：递归过滤侧边栏响应中的项目
+     */
+    public static String modifySidebar(String original) {
+        if (original == null || original.isEmpty()) return original;
+        try {
+            HashMap<String, Boolean> settingMap = SettingHelper.getInstance().getSidebarSetting(null);
+            if (settingMap == null || settingMap.isEmpty()) return original;
+            JSONObject root = new JSONObject(original);
+            filterSidebarJsonObject(root, settingMap);
+            return root.toString();
+        } catch (Throwable t) {
+            DebugLogger.e("EAPIHelper", "modifySidebar error: " + t.getMessage(), t);
+        }
+        return original;
+    }
+
+    private static void filterSidebarJsonObject(JSONObject obj, HashMap<String, Boolean> settingMap) {
+        if (obj == null) return;
+        List<String> keys = new ArrayList<>();
+        Iterator<String> it = obj.keys();
+        while (it.hasNext()) {
+            keys.add(it.next());
+        }
+        for (String k : keys) {
+            Object val = obj.opt(k);
+            if (val instanceof JSONObject) {
+                filterSidebarJsonObject((JSONObject) val, settingMap);
+            } else if (val instanceof JSONArray) {
+                JSONArray arr = (JSONArray) val;
+                JSONArray newArr = new JSONArray();
+                for (int i = 0; i < arr.length(); i++) {
+                    Object item = arr.opt(i);
+                    if (item instanceof JSONObject) {
+                        JSONObject itemObj = (JSONObject) item;
+                        if (!shouldHideSidebarJsonItem(itemObj, settingMap)) {
+                            filterSidebarJsonObject(itemObj, settingMap);
+                            newArr.put(itemObj);
+                        }
+                    } else {
+                        newArr.put(item);
+                    }
+                }
+                try {
+                    obj.put(k, newArr);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
+
+    private static boolean shouldHideSidebarJsonItem(JSONObject item, HashMap<String, Boolean> settingMap) {
+        if (item == null || settingMap == null) return false;
+        String allText = (item.optString("name", "") + " "
+                + item.optString("title", "") + " "
+                + item.optString("text", "") + " "
+                + item.optString("header", "") + " "
+                + item.optString("actionUrl", "") + " "
+                + item.optString("code", "") + " "
+                + item.optString("itemType", "")).toLowerCase();
+        return shouldHideSidebarString(allText, settingMap);
+    }
+
+    public static boolean shouldHideSidebarString(String allText, HashMap<String, Boolean> settingMap) {
+        if (allText == null || settingMap == null) return false;
+        String lower = allText.toLowerCase();
+
+        if (Boolean.TRUE.equals(settingMap.get("STORE")) && (lower.contains("商城") || lower.contains("store"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("GAME")) && (lower.contains("游戏") || lower.contains("game"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("CLOUD_SHELL_CENTER")) && (lower.contains("云贝") || lower.contains("cloudshell"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("TICKET")) && (lower.contains("有票") || lower.contains("ticket"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("MY_ORDER")) && (lower.contains("订单") || lower.contains("order"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("DISCOUNT_COUPON")) && (lower.contains("优惠券") || lower.contains("coupon"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("COLOR_RING")) && (lower.contains("彩铃") || lower.contains("color_ring"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("PRIVATE_CLOUD")) && (lower.contains("云盘") || lower.contains("private_cloud"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("CACHE_WHILE_LISTEN")) && (lower.contains("边听边存") || lower.contains("cache_while_listen"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("VEHICLE_PLAYER")) && (lower.contains("驾驶") || lower.contains("vehicle"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("YOUTH_MODE")) && (lower.contains("青少年") || lower.contains("youth"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("ALARM_CLOCK")) && (lower.contains("闹钟") || lower.contains("alarm"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("CLOCK_PLAY")) && (lower.contains("定时") || lower.contains("clock_play"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("IDENTIFY")) && (lower.contains("听歌识曲") || lower.contains("identify"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("SCAN")) && (lower.contains("扫一扫") || lower.contains("scan"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("FREE")) && (lower.contains("免流量") || lower.contains("free_traffic"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("MUSIC_BLACKLIST")) && (lower.contains("黑名单") || lower.contains("blacklist"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("MY_FRIEND")) && (lower.contains("好友") || lower.contains("my_friend"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("RED_PACKET")) && (lower.contains("红包") || lower.contains("red_packet"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("PROFIT")) && (lower.contains("赞赏") || lower.contains("profit"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("FEEDBACK_HELP")) && (lower.contains("帮助") || lower.contains("feedback"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("SHARE_APP")) && (lower.contains("分享网易云") || lower.contains("share_app"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("ABOUT")) && (lower.contains("关于") || lower.contains("about"))) return true;
+        if ((Boolean.TRUE.equals(settingMap.get("MUSICIAN")) || Boolean.TRUE.equals(settingMap.get("CREATOR_CENTER")) || Boolean.TRUE.equals(settingMap.get("MUSICIAN_CREATOR_CENTER")) || Boolean.TRUE.equals(settingMap.get("MUSICIAN_VIEWER")))
+                && (lower.contains("音乐人") || lower.contains("创作者") || lower.contains("musician") || lower.contains("creator"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("BEAT")) && lower.contains("beat")) return true;
+        if (Boolean.TRUE.equals(settingMap.get("NEARBY")) && (lower.contains("附近") || lower.contains("nearby"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("VIP")) && (lower.contains("我的会员") || lower.contains("黑胶vip") || lower.contains("vipnewcenter"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("MESSAGE")) && (lower.contains("我的消息") || lower.contains("message"))) return true;
+        if (Boolean.TRUE.equals(settingMap.get("THEME")) && (lower.contains("装扮") || lower.contains("theme"))) return true;
+
+        return false;
+    }
 }

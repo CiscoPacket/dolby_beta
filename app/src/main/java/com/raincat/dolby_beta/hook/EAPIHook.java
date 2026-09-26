@@ -44,7 +44,8 @@ public class EAPIHook {
                     boolean needProcess = SettingHelper.getInstance().isEnable(SettingHelper.black_key)
                             || SettingHelper.getInstance().isEnable(SettingHelper.proxy_master_key)
                             || SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key)
-                            || SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key);
+                            || SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key)
+                            || SettingHelper.getInstance().isSidebarHideEnable();
                     if (!needProcess)
                         return;
                     //返回参数不对
@@ -97,6 +98,9 @@ public class EAPIHook {
                     } else if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key)
                             && (path.contains("link/home/framework/tab") || path.contains("link/home/framework/top/tab"))) {
                         original = EAPIHelper.modifyTab(original);
+                    } else if (SettingHelper.getInstance().isSidebarHideEnable()
+                            && (path.contains("link/position/show") || path.contains("side-bar") || path.contains("vipnewcenter") || path.contains("yunbei/account"))) {
+                        original = EAPIHelper.modifySidebar(original);
                     } else if (path.contains("v1/playlist/manipulate/tracks")) {
                         original = EAPIHelper.modifyManipulate(ClassHelper.HttpParams.getParams(context, eapi), original);
                     } else if (path.contains("song/like")) {

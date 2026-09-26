@@ -228,12 +228,31 @@ public class SettingHelper {
     }
 
     public boolean getSetting(String key) {
+        if (beauty_sidebar_hide_key.equals(key)) {
+            return isSidebarHideEnable();
+        }
         Boolean value = settingMap.get(key);
         return value != null && value;
     }
 
     public boolean isEnable(String key) {
+        if (beauty_sidebar_hide_key.equals(key)) {
+            return isSidebarHideEnable();
+        }
         return getSetting(master_key) && getSetting(key);
+    }
+
+    public boolean isSidebarHideEnable() {
+        if (settingMap == null || !Boolean.TRUE.equals(settingMap.get(master_key))) return false;
+        Boolean directVal = settingMap.get(beauty_sidebar_hide_key);
+        if (directVal != null && directVal) return true;
+        HashMap<String, Boolean> map = getSidebarSetting(null);
+        if (map != null) {
+            for (Boolean val : map.values()) {
+                if (Boolean.TRUE.equals(val)) return true;
+            }
+        }
+        return false;
     }
 
     public boolean isDebugMode() {
@@ -294,6 +313,17 @@ public class SettingHelper {
             sidebarSettingMap.put(key, value);
         }
         sharedPreferences.edit().putBoolean(key, value).apply();
+        boolean anyEnable = false;
+        HashMap<String, Boolean> map = getSidebarSetting(null);
+        if (map != null) {
+            for (Boolean val : map.values()) {
+                if (Boolean.TRUE.equals(val)) {
+                    anyEnable = true;
+                    break;
+                }
+            }
+        }
+        setSetting(beauty_sidebar_hide_key, anyEnable);
     }
 
     public String getSignId() {

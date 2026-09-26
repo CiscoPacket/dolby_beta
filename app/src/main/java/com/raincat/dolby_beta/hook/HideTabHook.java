@@ -2,13 +2,15 @@ package com.raincat.dolby_beta.hook;
 
 import android.content.Context;
 import android.content.Intent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
 
 import com.raincat.dolby_beta.helper.ClassHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -22,8 +24,8 @@ import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 /**
  * <pre>
  *     author : RainCat & Cisco
- *     desc   : 精简Tab (首页仅保留“我的”与“发现/首页”，排除搜索、漫游等)
- *     version: 3.0
+ *     desc   : 精简Tab (首页仅保留“我的”与“发现/首页”，适配 9.6.05 NavigationTabLayout 与 th0.o 数据总线)
+ *     version: 4.0
  * </pre>
  */
 public class HideTabHook {
@@ -34,6 +36,7 @@ public class HideTabHook {
         // 1. 适配新版网易云 (9.x 统一Tab数据源提供者 th0.o)
         Class<?> th0Class = XposedHelpers.findClassIfExists("th0.o", context.getClassLoader());
         if (th0Class != null) {
+            // A. 获取全部 Tab code 列表 (Z1)
             try {
                 XposedHelpers.findAndHookMethod(th0Class, "Z1", new XC_MethodHook() {
                     @Override
@@ -44,6 +47,8 @@ public class HideTabHook {
                         if (param.getResult() instanceof String[]) {
                             String[] original = (String[]) param.getResult();
                             param.setResult(filterTabArray(original));
+                        } else {
+                            param.setResult(new String[]{"main", "mine"});
                         }
                     }
                 });
@@ -51,7 +56,48 @@ public class HideTabHook {
                 XposedBridge.log("[dolby_beta] hook th0.o.Z1 failed: " + t);
             }
 
-            // Hook 所有返回 CopyOnWriteArrayList / List 的数据生成方法 (如 p2, W1)
+            // B. 依据 position 获取 Tab code (V1)
+            try {
+                XposedHelpers.findAndHookMethod(th0Class, "V1", int.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                            return;
+                        int pos = (int) param.args[0];
+                        if (pos == 0) {
+                            param.setResult("main");
+                        } else if (pos == 1) {
+                            param.setResult("mine");
+                        }
+                    }
+                });
+            } catch (Throwable t) {
+                XposedBridge.log("[dolby_beta] hook th0.o.V1 failed: " + t);
+            }
+
+            // C. 依据 Tab code 获取 position (Y1)
+            try {
+                XposedHelpers.findAndHookMethod(th0Class, "Y1", String.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                            return;
+                        String code = (String) param.args[0];
+                        if (code == null) return;
+                        if (isHomeTab(code)) {
+                            param.setResult(0);
+                        } else if (isMineTab(code)) {
+                            param.setResult(1);
+                        } else {
+                            param.setResult(-1);
+                        }
+                    }
+                });
+            } catch (Throwable t) {
+                XposedBridge.log("[dolby_beta] hook th0.o.Y1 failed: " + t);
+            }
+
+            // D. Hook 所有返回 CopyOnWriteArrayList / List 的数据生成方法 (如 p2, W1)
             for (Method m : th0Class.getDeclaredMethods()) {
                 if (List.class.isAssignableFrom(m.getReturnType())) {
                     try {
@@ -103,7 +149,87 @@ public class HideTabHook {
             }
         }
 
-        // 2. 兼容旧版基于反射 MainActivitySuperClass 的 Tab 注入
+        // 2. 9.6+ 底部栏 UI 渲染控件 (NavigationTabLayout) 拦截多余 Tab 并均分宽度
+        Class<?> navTabClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.theme.ui.NavigationTabLayout", context.getClassLoader());
+        if (navTabClass != null) {
+            XC_MethodHook addTabHook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                        return;
+                    if (param.args != null && param.args.length > 0 && param.args[0] != null) {
+                        Object g0Obj = param.args[0];
+                        String tag = null;
+                        try {
+                            Object tagObj = XposedHelpers.callMethod(g0Obj, "j");
+                            if (tagObj != null) tag = tagObj.toString();
+                        } catch (Throwable ignored) {
+                        }
+                        if (tag == null) {
+                            try {
+                                Object tagObj = XposedHelpers.getObjectField(g0Obj, "tag");
+                                if (tagObj != null) tag = tagObj.toString();
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                        if (tag != null && !isHomeTab(tag) && !isMineTab(tag)) {
+                            // 阻断添加搜索、动态、漫游等非首页/我的Tab
+                            param.setResult(null);
+                        }
+                    }
+                }
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                        return;
+                    if (param.thisObject instanceof LinearLayout) {
+                        adjustNavigationTabLayout((LinearLayout) param.thisObject);
+                    }
+                }
+            };
+
+            for (Method m : navTabClass.getDeclaredMethods()) {
+                String mn = m.getName();
+                if ("c".equals(mn) || "d".equals(mn)) {
+                    try {
+                        XposedBridge.hookMethod(m, addTabHook);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+
+            try {
+                XposedHelpers.findAndHookMethod(navTabClass, "getTabCount", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                            return;
+                        int count = (int) param.getResult();
+                        if (count > 2) {
+                            param.setResult(2);
+                        }
+                    }
+                });
+            } catch (Throwable ignored) {
+            }
+
+            try {
+                XposedHelpers.findAndHookMethod(navTabClass, "onLayout", boolean.class, int.class, int.class, int.class, int.class, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
+                            return;
+                        if (param.thisObject instanceof LinearLayout) {
+                            adjustNavigationTabLayout((LinearLayout) param.thisObject);
+                        }
+                    }
+                });
+            } catch (Throwable ignored) {
+            }
+        }
+
+        // 3. 兼容旧版基于反射 MainActivitySuperClass 的 Tab 注入
         List<Method> setTabItemMethods = ClassHelper.MainActivitySuperClass.getTabItemStringMethods(context);
         if (setTabItemMethods != null && setTabItemMethods.size() != 0) {
             for (Method method : setTabItemMethods) {
@@ -138,7 +264,7 @@ public class HideTabHook {
             }
         }
 
-        // 3. 底部栏 BottomTabView 兼容
+        // 4. 底部栏 BottomTabView 兼容旧版
         if (versionCode >= 8000010) {
             Class<?> bottomTabViewClass = ClassHelper.BottomTabView.getClazz(context);
             if (bottomTabViewClass != null) {
@@ -151,8 +277,8 @@ public class HideTabHook {
                             if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
                                 return;
                             List<String> list = new ArrayList<>();
-                            list.add("mine");
                             list.add("main");
+                            list.add("mine");
                             param.setResult(list);
                         }
                     });
@@ -167,8 +293,8 @@ public class HideTabHook {
                             if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_tab_hide_key))
                                 return;
                             List<String> list = new ArrayList<>();
-                            list.add("mine");
                             list.add("main");
+                            list.add("mine");
                             param.args[0] = list;
                         }
                     });
@@ -177,14 +303,59 @@ public class HideTabHook {
         }
     }
 
+    private static void adjustNavigationTabLayout(LinearLayout ll) {
+        if (ll == null) return;
+        int childCount = ll.getChildCount();
+        int visibleCount = 0;
+        for (int i = 0; i < childCount; i++) {
+            View child = ll.getChildAt(i);
+            if (child == null) continue;
+            String tag = getTabIdentifier(child.getTag());
+            if (isSearchOrSocial(tag) || visibleCount >= 2) {
+                if (child.getVisibility() != View.GONE) {
+                    child.setVisibility(View.GONE);
+                }
+                ViewGroup.LayoutParams lp = child.getLayoutParams();
+                if (lp instanceof LinearLayout.LayoutParams) {
+                    LinearLayout.LayoutParams llp = (LinearLayout.LayoutParams) lp;
+                    if (llp.weight != 0 || llp.width != 0) {
+                        llp.weight = 0;
+                        llp.width = 0;
+                        child.setLayoutParams(llp);
+                    }
+                }
+            } else {
+                visibleCount++;
+                if (child.getVisibility() != View.VISIBLE) {
+                    child.setVisibility(View.VISIBLE);
+                }
+                ViewGroup.LayoutParams lp = child.getLayoutParams();
+                if (lp instanceof LinearLayout.LayoutParams) {
+                    LinearLayout.LayoutParams llp = (LinearLayout.LayoutParams) lp;
+                    if (llp.weight != 1.0f || llp.width != 0) {
+                        llp.weight = 1.0f;
+                        llp.width = 0;
+                        child.setLayoutParams(llp);
+                    }
+                }
+            }
+        }
+    }
+
+    public static boolean isSearchOrSocial(String s) {
+        if (s == null) return false;
+        String lower = s.toLowerCase();
+        return lower.contains("search") || lower.contains("搜索")
+                || lower.contains("social") || lower.contains("动态")
+                || lower.contains("roam") || lower.contains("漫游")
+                || lower.contains("radio") || lower.contains("电台")
+                || lower.contains("moment") || lower.contains("look") || lower.contains("直播");
+    }
+
     public static boolean isHomeTab(String s) {
         if (s == null) return false;
         String lower = s.toLowerCase();
-        if (lower.contains("search") || lower.contains("搜索")
-                || lower.contains("roam") || lower.contains("漫游")
-                || lower.contains("radio") || lower.contains("电台")
-                || lower.contains("dynamic") || lower.contains("动态")
-                || lower.contains("moment") || lower.contains("look") || lower.contains("直播")) {
+        if (isSearchOrSocial(lower)) {
             return false;
         }
         return lower.contains("find") || lower.contains("发现")
@@ -211,11 +382,16 @@ public class HideTabHook {
             } catch (Throwable ignored) {
             }
         }
+        try {
+            Object val = XposedHelpers.callMethod(item, "j");
+            if (val != null) return val.toString();
+        } catch (Throwable ignored) {
+        }
         return item.toString();
     }
 
     public static String[] filterTabArray(String[] original) {
-        if (original == null || original.length <= 2) return original;
+        if (original == null || original.length <= 2) return new String[]{"main", "mine"};
         String homeTab = null;
         String mineTab = null;
         for (String s : original) {
@@ -226,15 +402,9 @@ public class HideTabHook {
                 if (homeTab == null) homeTab = s;
             }
         }
-        if (homeTab == null) homeTab = original[0];
-        if (mineTab == null) mineTab = original[original.length - 1];
-
-        if (homeTab != null && mineTab != null && !homeTab.equals(mineTab)) {
-            return new String[]{homeTab, mineTab};
-        } else if (original.length >= 2) {
-            return new String[]{original[0], original[original.length - 1]};
-        }
-        return original;
+        if (homeTab == null) homeTab = "main";
+        if (mineTab == null) mineTab = "mine";
+        return new String[]{homeTab, mineTab};
     }
 
     @SuppressWarnings("unchecked")

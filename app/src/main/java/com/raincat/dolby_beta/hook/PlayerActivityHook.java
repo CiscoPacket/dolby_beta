@@ -446,15 +446,17 @@ public class PlayerActivityHook {
         if (view == null) return;
         try {
             View maskBottom = (View) XposedHelpers.getObjectField(view, "maskBottomView");
-            if (maskBottom != null && maskBottom.getVisibility() != View.GONE) {
-                maskBottom.setVisibility(View.GONE);
+            if (maskBottom != null) {
+                maskBottom.setVisibility(View.INVISIBLE);
+                maskBottom.setAlpha(0.0f);
             }
         } catch (Throwable ignored) {
         }
         try {
             View maskTop = (View) XposedHelpers.getObjectField(view, "maskTopView");
-            if (maskTop != null && maskTop.getVisibility() != View.GONE) {
-                maskTop.setVisibility(View.GONE);
+            if (maskTop != null) {
+                maskTop.setVisibility(View.INVISIBLE);
+                maskTop.setAlpha(0.0f);
             }
         } catch (Throwable ignored) {
         }
