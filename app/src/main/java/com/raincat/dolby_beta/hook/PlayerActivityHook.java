@@ -386,9 +386,18 @@ public class PlayerActivityHook {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-                        String customPath = SettingHelper.getInstance().getPictureUrl();
-                        if (!TextUtils.isEmpty(customPath) && param.args != null && param.args.length > 0) {
-                            param.args[0] = customPath;
+                        // 模块已由独立图层接管自定义背景，直接屏蔽官方控件避免 UCrop 崩溃
+                        param.setResult(false);
+                        if (param.thisObject instanceof View) {
+                            ((View) param.thisObject).setVisibility(View.GONE);
+                        }
+                    } else {
+                        // 未开启时，如果入参 url 为空或非法导致 Uri.parse(url).getScheme() == null，也拦截返回 false 防止崩溃
+                        if (param.args != null && param.args.length > 0) {
+                            Object arg = param.args[0];
+                            if (arg == null || TextUtils.isEmpty(arg.toString()) || !arg.toString().contains("://")) {
+                                param.setResult(false);
+                            }
                         }
                     }
                 }
@@ -401,6 +410,30 @@ public class PlayerActivityHook {
                     } catch (Throwable ignored) {
                     }
                 }
+            }
+        }
+
+        // 7. UCrop BitmapWorkerTask 异常防护，彻底拦截 IllegalArgumentException: Invalid Uri schemenull
+        Class<?> workerTaskClass = ClassHelper.BitmapWorkerTask.getClazz(context);
+        if (workerTaskClass == null) {
+            workerTaskClass = XposedHelpers.findClassIfExists("w94.b", context.getClassLoader());
+        }
+        if (workerTaskClass == null) {
+            workerTaskClass = XposedHelpers.findClassIfExists("com.yalantis.ucrop.task.BitmapWorkerTask", context.getClassLoader());
+        }
+        if (workerTaskClass != null) {
+            try {
+                XposedBridge.hookAllMethods(workerTaskClass, "doInBackground", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        if (param.hasThrowable()) {
+                            XposedBridge.log("[dolby_beta] Suppressed BitmapWorkerTask crash: " + param.getThrowable());
+                            param.setThrowable(null);
+                            param.setResult(null);
+                        }
+                    }
+                });
+            } catch (Throwable ignored) {
             }
         }
     }
@@ -452,6 +485,20 @@ public class PlayerActivityHook {
                     bgImageView.setVisibility(View.GONE);
                 }
             }
+
+            // 隐藏可能覆盖官方图层的 PlayerCustomBackgroundView
+            try {
+                Object z0 = XposedHelpers.getObjectField(activity, "z0");
+                if (z0 instanceof View) {
+                    if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
+                        ((View) z0).setVisibility(View.GONE);
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            // 立即触发背景加载与渲染
+            reloadBackground();
         } catch (Throwable t) {
             XposedBridge.log("[dolby_beta] setupPlayerBackground error: " + t);
         }
@@ -488,6 +535,18 @@ public class PlayerActivityHook {
                     if (sLastChildBgView != null && sLastChildBgView.get() != null) {
                         sLastChildBgView.get().setAlpha(1.0f);
                         sLastChildBgView.get().invalidate();
+                    }
+                    if (sLastPlayerActivity != null) {
+                        Activity act = sLastPlayerActivity.get();
+                        if (act != null) {
+                            try {
+                                Object m1 = XposedHelpers.getObjectField(act, "m1");
+                                if (m1 instanceof View) {
+                                    ((View) m1).setBackground(null);
+                                }
+                            } catch (Throwable ignored) {
+                            }
+                        }
                     }
                     return;
                 }
@@ -559,6 +618,39 @@ public class PlayerActivityHook {
             ImageSwitcher is = sLastImageSwitcher.get();
             if (is != null) {
                 is.setImageDrawable(drawable);
+            }
+        }
+        if (sLastPlayerActivity != null) {
+            Activity act = sLastPlayerActivity.get();
+            if (act != null) {
+                try {
+                    Object m1 = XposedHelpers.getObjectField(act, "m1");
+                    if (m1 instanceof View) {
+                        ((View) m1).setBackground(drawable);
+                    }
+                } catch (Throwable ignored) {
+                }
+                try {
+                    Object e1 = XposedHelpers.getObjectField(act, "e1");
+                    if (e1 instanceof ImageView) {
+                        ((ImageView) e1).setImageDrawable(drawable);
+                    }
+                } catch (Throwable ignored) {
+                }
+                try {
+                    Object d1 = XposedHelpers.getObjectField(act, "d1");
+                    if (d1 instanceof ImageView) {
+                        ((ImageView) d1).setImageDrawable(drawable);
+                    }
+                } catch (Throwable ignored) {
+                }
+                try {
+                    Object z0 = XposedHelpers.getObjectField(act, "z0");
+                    if (z0 instanceof View) {
+                        ((View) z0).setVisibility(View.GONE);
+                    }
+                } catch (Throwable ignored) {
+                }
             }
         }
         if (sLastChildBgView != null) {

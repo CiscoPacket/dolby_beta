@@ -786,9 +786,6 @@ public class EAPIHelper {
             JSONObject root = new JSONObject(original);
             JSONObject data = root.optJSONObject("data");
             if (data != null) {
-                if (data.has("sortType")) {
-                    data.put("sortType", 2);
-                }
                 JSONArray sortTypeList = data.optJSONArray("sortTypeList");
                 if (sortTypeList != null && sortTypeList.length() > 1) {
                     JSONObject hotItem = null;

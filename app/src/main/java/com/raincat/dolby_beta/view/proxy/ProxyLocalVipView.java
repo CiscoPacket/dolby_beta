@@ -48,6 +48,13 @@ public class ProxyLocalVipView extends BaseDialogItem {
                     .setSingleChoiceItems(labels, checked, (dialog, which) -> {
                         SettingHelper.getInstance().setLocalVip(values[which]);
                         refresh();
+                        if (SettingHelper.getInstance().getSetting(SettingHelper.proxy_master_key)
+                                && !SettingHelper.getInstance().getSetting(SettingHelper.proxy_server_key)) {
+                            try {
+                                com.raincat.dolby_beta.helper.ScriptHelper.startScript();
+                            } catch (Throwable ignored) {
+                            }
+                        }
                         sendBroadcast(SettingHelper.refresh_setting);
                         dialog.dismiss();
                     })

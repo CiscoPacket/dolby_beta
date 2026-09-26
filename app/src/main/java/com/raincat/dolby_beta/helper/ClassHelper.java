@@ -73,6 +73,7 @@ public class ClassHelper {
     private static final String KEY_COMMENT_REQUEST_BUILDER = "comment_request_builder_class_";
     private static final String KEY_PLAYER_CUSTOM_BG = "player_custom_bg_class_";
     private static final String KEY_PLAYER_CHILD_BG = "player_child_bg_class_";
+    private static final String KEY_BITMAP_WORKER_TASK = "bitmap_worker_task_class_";
 
     public interface OnCacheClassListener {
         void onGet();
@@ -169,6 +170,9 @@ public class ClassHelper {
             String pcbChildName = sp.getString(KEY_PLAYER_CHILD_BG + version, null);
             if (pcbChildName != null) PlayerChildBackground.clazz = findClassIfExists(pcbChildName, classLoader);
 
+            String bwtName = sp.getString(KEY_BITMAP_WORKER_TASK + version, null);
+            if (bwtName != null) BitmapWorkerTask.clazz = findClassIfExists(bwtName, classLoader);
+
             return true;
         } catch (Throwable t) {
             XposedBridge.log("[dolby_beta] loadFromCache error: " + t.getMessage());
@@ -193,6 +197,7 @@ public class ClassHelper {
             if (CommentRequestBuilder.clazz != null) editor.putString(KEY_COMMENT_REQUEST_BUILDER + version, CommentRequestBuilder.clazz.getName());
             if (PlayerCustomBackground.clazz != null) editor.putString(KEY_PLAYER_CUSTOM_BG + version, PlayerCustomBackground.clazz.getName());
             if (PlayerChildBackground.clazz != null) editor.putString(KEY_PLAYER_CHILD_BG + version, PlayerChildBackground.clazz.getName());
+            if (BitmapWorkerTask.clazz != null) editor.putString(KEY_BITMAP_WORKER_TASK + version, BitmapWorkerTask.clazz.getName());
             editor.apply();
             XposedBridge.log("[dolby_beta] Saved hook classes to cache for version " + version);
         } catch (Throwable t) {
@@ -263,6 +268,14 @@ public class ClassHelper {
             // PlayerChildBackground (PlayerChildBackgroundView fallback)
             if (PlayerChildBackground.clazz == null) {
                 PlayerChildBackground.clazz = findClassIfExists("com.netease.cloudmusic.ui.PlayerChildBackgroundView", classLoader);
+            }
+
+            // BitmapWorkerTask (w94.b / UCrop fallback)
+            if (BitmapWorkerTask.clazz == null) {
+                BitmapWorkerTask.clazz = findClassIfExists("w94.b", classLoader);
+                if (BitmapWorkerTask.clazz == null) {
+                    BitmapWorkerTask.clazz = findClassIfExists("com.yalantis.ucrop.task.BitmapWorkerTask", classLoader);
+                }
             }
 
             // HttpInterceptor: com.netease.cloudmusic.network.interceptor.q
@@ -573,6 +586,18 @@ public class ClassHelper {
                 if (!pcbChildList.isEmpty()) {
                     PlayerChildBackground.clazz = pcbChildList.get(0).getInstance(classLoader);
                     XposedBridge.log("[dolby_beta] DexKit found PlayerChildBackground: " + PlayerChildBackground.clazz.getName());
+                }
+            }
+
+            // 10. BitmapWorkerTask (w94.b / com.yalantis.ucrop.task.BitmapWorkerTask)
+            if (BitmapWorkerTask.clazz == null) {
+                ClassDataList bwtList = bridge.findClass(FindClass.create()
+                        .matcher(ClassMatcher.create()
+                                .superClass("android.os.AsyncTask")
+                                .usingStrings("BitmapWorkerTask", "Invalid Uri scheme")));
+                if (!bwtList.isEmpty()) {
+                    BitmapWorkerTask.clazz = bwtList.get(0).getInstance(classLoader);
+                    XposedBridge.log("[dolby_beta] DexKit found BitmapWorkerTask: " + BitmapWorkerTask.clazz.getName());
                 }
             }
         } catch (Throwable t) {
@@ -1213,6 +1238,23 @@ public class ClassHelper {
             if (clazz == null) {
                 ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
                 if (cl != null) clazz = findClassIfExists("com.netease.cloudmusic.ui.PlayerChildBackgroundView", cl);
+            }
+            return clazz;
+        }
+
+        public static void setClazz(Class<?> c) {
+            clazz = c;
+        }
+    }
+
+    public static class BitmapWorkerTask {
+        private static Class<?> clazz;
+
+        public static Class<?> getClazz(Context context) {
+            if (clazz == null) {
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                if (cl != null) clazz = findClassIfExists("w94.b", cl);
+                if (clazz == null && cl != null) clazz = findClassIfExists("com.yalantis.ucrop.task.BitmapWorkerTask", cl);
             }
             return clazz;
         }
