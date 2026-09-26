@@ -47,10 +47,11 @@ public class SidebarEnum {
     }
 
     public static LinkedHashMap<String, String> getSidebarEnum() {
-        if (sidebarMap == null) {
-            return new LinkedHashMap<>(enumMap);
+        LinkedHashMap<String, String> result = new LinkedHashMap<>(enumMap);
+        if (sidebarMap != null) {
+            result.putAll(sidebarMap);
         }
-        return sidebarMap;
+        return result;
     }
 
     static {

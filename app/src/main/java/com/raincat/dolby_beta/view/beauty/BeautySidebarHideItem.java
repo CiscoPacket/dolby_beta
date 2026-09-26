@@ -53,8 +53,7 @@ public class BeautySidebarHideItem extends BaseDialogItem {
     public void refresh() {
         super.refresh();
         if (key != null && checkBox != null && checkBox.getVisibility() == VISIBLE) {
-            HashMap<String, Boolean> map = SettingHelper.getInstance().getSidebarSetting(null);
-            boolean isChecked = map != null && Boolean.TRUE.equals(map.get(key));
+            boolean isChecked = SettingHelper.getInstance().getSetting(key);
             checkBox.setChecked(isChecked);
         }
     }

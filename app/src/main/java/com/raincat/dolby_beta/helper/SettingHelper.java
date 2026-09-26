@@ -230,7 +230,7 @@ public class SettingHelper {
 
     public void setSetting(String key, boolean value) {
         settingMap.put(key, value);
-        sharedPreferences.edit().putBoolean(key, value).apply();
+        sharedPreferences.edit().putBoolean(key, value).commit();
     }
 
     public boolean getSetting(String key) {
@@ -328,7 +328,8 @@ public class SettingHelper {
         if (sidebarSettingMap != null) {
             sidebarSettingMap.put(key, value);
         }
-        sharedPreferences.edit().putBoolean(key, value).apply();
+        settingMap.put(key, value);
+        sharedPreferences.edit().putBoolean(key, value).commit();
         boolean anyEnable = false;
         HashMap<String, Boolean> map = getSidebarSetting(null);
         if (map != null) {
@@ -410,7 +411,7 @@ public class SettingHelper {
         } else if ("false".equals(normalized) || "off".equals(normalized) || "".equals(normalized) || "0".equals(normalized) || "none".equals(normalized)) {
             normalized = "off";
         }
-        sharedPreferences.edit().putString(SettingHelper.local_vip_key, normalized).apply();
+        sharedPreferences.edit().putString(SettingHelper.local_vip_key, normalized).commit();
     }
 
     public String getKuwoCookie() {
