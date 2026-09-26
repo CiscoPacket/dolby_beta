@@ -36,6 +36,7 @@ public class EAPIHelper {
      */
     public static String modifyPlayer(String original) {
         if (original == null || original.isEmpty()) return original;
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return original;
         try {
             JSONObject root = new JSONObject(original);
             root.put("code", 200);
@@ -175,6 +176,8 @@ public class EAPIHelper {
      * 音效 (依据 UNM unblockSoundEffects 机制解除锁定)
      */
     public static String modifyEffect(String originalContent) {
+        if (originalContent == null || originalContent.isEmpty()) return originalContent;
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return originalContent;
         try {
             JSONObject jsonObject = new JSONObject(originalContent);
             if (jsonObject.optInt("code", 0) == 200) {
@@ -234,6 +237,8 @@ public class EAPIHelper {
      * VIP 会员信息 (对标 UNM ENABLE_LOCAL_VIP=svip 规范)
      */
     public static String modifyVipInfo(String original) {
+        if (original == null || original.isEmpty()) return original;
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return original;
         try {
             JSONObject jsonObject = new JSONObject(original);
             JSONObject data = jsonObject.optJSONObject("data");
@@ -309,6 +314,8 @@ public class EAPIHelper {
      * 账号信息（VIP 角标显示与 Moshi ProfileDO 支持）
      */
     public static String modifyAccount(String original) {
+        if (original == null || original.isEmpty()) return original;
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return original;
         try {
             JSONObject jsonObject = new JSONObject(original);
             long now = System.currentTimeMillis();
@@ -387,6 +394,8 @@ public class EAPIHelper {
      * VIP 会员图标与 Logo (支持 SVIP 动态图标)
      */
     public static String modifyMemberLogo(String original) {
+        if (original == null || original.isEmpty()) return original;
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return original;
         try {
             JSONObject jsonObject = new JSONObject(original);
             jsonObject.put("code", 200);
@@ -457,6 +466,8 @@ public class EAPIHelper {
      * 动效歌词、特效与音质鉴权 (递归遍历所有层级特权)
      */
     public static String modifyVipAuth(String original) {
+        if (original == null || original.isEmpty()) return original;
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return original;
         try {
             JSONObject jsonObject = new JSONObject(original);
             jsonObject.put("code", 200);
@@ -523,6 +534,8 @@ public class EAPIHelper {
      * 播放器样式解锁
      */
     public static String modifyPlayerMode(String original) {
+        if (original == null || original.isEmpty()) return original;
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return original;
         try {
             JSONObject jsonObject = new JSONObject(original);
             jsonObject.put("code", 200);
@@ -546,6 +559,8 @@ public class EAPIHelper {
      * 解锁歌曲 VIP 限制、音质限制、播放下载权限
      */
     public static String injectUniversalPrivilege(String original) {
+        if (original == null || original.isEmpty()) return original;
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return original;
         try {
             JSONObject jsonObject = new JSONObject(original);
             injectPrivilege(jsonObject);
@@ -641,6 +656,8 @@ public class EAPIHelper {
      * batch 接口中的 VIP 信息修改与全局注入
      */
     public static String modifyBatchVip(String original) {
+        if (original == null || original.isEmpty()) return original;
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return original;
         try {
             JSONObject jsonObject = new JSONObject(original);
             List<String> keyList = new ArrayList<>();

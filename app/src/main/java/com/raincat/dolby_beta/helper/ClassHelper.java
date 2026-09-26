@@ -69,6 +69,10 @@ public class ClassHelper {
     private static final String KEY_COOKIE = "cookie_class_";
     private static final String KEY_COOKIE_ABSTRACT = "cookie_abstract_class_";
     private static final String KEY_BOTTOM_TAB = "bottom_tab_class_";
+    private static final String KEY_TAB_MANAGER = "tab_manager_class_";
+    private static final String KEY_COMMENT_REQUEST_BUILDER = "comment_request_builder_class_";
+    private static final String KEY_PLAYER_CUSTOM_BG = "player_custom_bg_class_";
+    private static final String KEY_PLAYER_CHILD_BG = "player_child_bg_class_";
 
     public interface OnCacheClassListener {
         void onGet();
@@ -153,6 +157,18 @@ public class ClassHelper {
             String bottomTabName = sp.getString(KEY_BOTTOM_TAB + version, null);
             if (bottomTabName != null) BottomTabView.clazz = findClassIfExists(bottomTabName, classLoader);
 
+            String tabManagerName = sp.getString(KEY_TAB_MANAGER + version, null);
+            if (tabManagerName != null) TabManager.clazz = findClassIfExists(tabManagerName, classLoader);
+
+            String crbName = sp.getString(KEY_COMMENT_REQUEST_BUILDER + version, null);
+            if (crbName != null) CommentRequestBuilder.clazz = findClassIfExists(crbName, classLoader);
+
+            String pcbName = sp.getString(KEY_PLAYER_CUSTOM_BG + version, null);
+            if (pcbName != null) PlayerCustomBackground.clazz = findClassIfExists(pcbName, classLoader);
+
+            String pcbChildName = sp.getString(KEY_PLAYER_CHILD_BG + version, null);
+            if (pcbChildName != null) PlayerChildBackground.clazz = findClassIfExists(pcbChildName, classLoader);
+
             return true;
         } catch (Throwable t) {
             XposedBridge.log("[dolby_beta] loadFromCache error: " + t.getMessage());
@@ -173,6 +189,10 @@ public class ClassHelper {
             if (Cookie.clazz != null) editor.putString(KEY_COOKIE + version, Cookie.clazz.getName());
             if (Cookie.abstractClazz != null) editor.putString(KEY_COOKIE_ABSTRACT + version, Cookie.abstractClazz.getName());
             if (BottomTabView.clazz != null) editor.putString(KEY_BOTTOM_TAB + version, BottomTabView.clazz.getName());
+            if (TabManager.clazz != null) editor.putString(KEY_TAB_MANAGER + version, TabManager.clazz.getName());
+            if (CommentRequestBuilder.clazz != null) editor.putString(KEY_COMMENT_REQUEST_BUILDER + version, CommentRequestBuilder.clazz.getName());
+            if (PlayerCustomBackground.clazz != null) editor.putString(KEY_PLAYER_CUSTOM_BG + version, PlayerCustomBackground.clazz.getName());
+            if (PlayerChildBackground.clazz != null) editor.putString(KEY_PLAYER_CHILD_BG + version, PlayerChildBackground.clazz.getName());
             editor.apply();
             XposedBridge.log("[dolby_beta] Saved hook classes to cache for version " + version);
         } catch (Throwable t) {
@@ -187,7 +207,9 @@ public class ClassHelper {
         resolveFastReflection(context);
 
         // 2. If any core class is missing, leverage DexKit dynamic Dex analysis
-        if (HttpResponse.clazz == null || HttpInterceptor.clazz == null || DownloadTransfer.clazz == null || Ad.clazz == null) {
+        if (HttpResponse.clazz == null || HttpInterceptor.clazz == null || DownloadTransfer.clazz == null || Ad.clazz == null
+                || TabManager.clazz == null || CommentRequestBuilder.clazz == null || PlayerCustomBackground.clazz == null
+                || PlayerChildBackground.clazz == null) {
             resolveWithDexKit(context);
         }
 
@@ -222,6 +244,26 @@ public class ClassHelper {
 
             // SidebarItem
             SidebarItem.clazz = findClassIfExists("com.netease.cloudmusic.music.biz.sidebar.account.j", classLoader);
+
+            // TabManager (th0.o fallback)
+            if (TabManager.clazz == null) {
+                TabManager.clazz = findClassIfExists("th0.o", classLoader);
+            }
+
+            // CommentRequestBuilder (x71.g0 fallback)
+            if (CommentRequestBuilder.clazz == null) {
+                CommentRequestBuilder.clazz = findClassIfExists("x71.g0", classLoader);
+            }
+
+            // PlayerCustomBackground (PlayerCustomBackgroundView fallback)
+            if (PlayerCustomBackground.clazz == null) {
+                PlayerCustomBackground.clazz = findClassIfExists("com.netease.cloudmusic.module.playerstyle.PlayerCustomBackgroundView", classLoader);
+            }
+
+            // PlayerChildBackground (PlayerChildBackgroundView fallback)
+            if (PlayerChildBackground.clazz == null) {
+                PlayerChildBackground.clazz = findClassIfExists("com.netease.cloudmusic.ui.PlayerChildBackgroundView", classLoader);
+            }
 
             // HttpInterceptor: com.netease.cloudmusic.network.interceptor.q
             Class<?> qClass = findClassIfExists("com.netease.cloudmusic.network.interceptor.q", classLoader);
@@ -478,6 +520,59 @@ public class ClassHelper {
                             break;
                         }
                     }
+                }
+            }
+
+            // 6. TabManager (th0.o)
+            if (TabManager.clazz == null) {
+                ClassDataList tmList = bridge.findClass(FindClass.create()
+                        .matcher(ClassMatcher.create()
+                                .addMethod(MethodMatcher.create().returnType("java.lang.String[]").paramCount(0))
+                                .addMethod(MethodMatcher.create().returnType("java.util.concurrent.CopyOnWriteArrayList"))
+                                .addMethod(MethodMatcher.create().returnType("java.lang.String").paramCount(1))
+                                .addMethod(MethodMatcher.create().returnType("int").paramCount(1))));
+                if (!tmList.isEmpty()) {
+                    TabManager.clazz = tmList.get(0).getInstance(classLoader);
+                    XposedBridge.log("[dolby_beta] DexKit found TabManager: " + TabManager.clazz.getName());
+                }
+            }
+
+            // 7. CommentRequestBuilder (x71.g0)
+            if (CommentRequestBuilder.clazz == null) {
+                ClassDataList crbList = bridge.findClass(FindClass.create()
+                        .matcher(ClassMatcher.create()
+                                .addMethod(MethodMatcher.create()
+                                        .returnType("com.netease.cloudmusic.module.fastload.core.PageCacheRequest$ReqParams")
+                                        .paramTypes("com.netease.cloudmusic.music.biz.comment.meta.CommentRequestData"))));
+                if (!crbList.isEmpty()) {
+                    CommentRequestBuilder.clazz = crbList.get(0).getInstance(classLoader);
+                    XposedBridge.log("[dolby_beta] DexKit found CommentRequestBuilder: " + CommentRequestBuilder.clazz.getName());
+                }
+            }
+
+            // 8. PlayerCustomBackground (PlayerCustomBackgroundView)
+            if (PlayerCustomBackground.clazz == null) {
+                ClassDataList pcbList = bridge.findClass(FindClass.create()
+                        .searchPackages("com.netease.cloudmusic.module.playerstyle", "com.netease.cloudmusic.ui")
+                        .matcher(ClassMatcher.create()
+                                .addMethod(MethodMatcher.create().name("getCurrentBgType").returnType("java.lang.String"))
+                                .addMethod(MethodMatcher.create().name("getLayoutId").returnType("int"))));
+                if (!pcbList.isEmpty()) {
+                    PlayerCustomBackground.clazz = pcbList.get(0).getInstance(classLoader);
+                    XposedBridge.log("[dolby_beta] DexKit found PlayerCustomBackground: " + PlayerCustomBackground.clazz.getName());
+                }
+            }
+
+            // 9. PlayerChildBackground (PlayerChildBackgroundView)
+            if (PlayerChildBackground.clazz == null) {
+                ClassDataList pcbChildList = bridge.findClass(FindClass.create()
+                        .searchPackages("com.netease.cloudmusic.ui")
+                        .matcher(ClassMatcher.create()
+                                .addMethod(MethodMatcher.create().name("setBgTopColor").paramCount(1))
+                                .addMethod(MethodMatcher.create().name("calculateHSL").returnType("float[]"))));
+                if (!pcbChildList.isEmpty()) {
+                    PlayerChildBackground.clazz = pcbChildList.get(0).getInstance(classLoader);
+                    XposedBridge.log("[dolby_beta] DexKit found PlayerChildBackground: " + PlayerChildBackground.clazz.getName());
                 }
             }
         } catch (Throwable t) {
@@ -1060,6 +1155,70 @@ public class ClassHelper {
                 }
             }
             return methodList;
+        }
+    }
+
+    public static class TabManager {
+        private static Class<?> clazz;
+
+        public static Class<?> getClazz(Context context) {
+            if (clazz == null) {
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                if (cl != null) clazz = findClassIfExists("th0.o", cl);
+            }
+            return clazz;
+        }
+
+        public static void setClazz(Class<?> c) {
+            clazz = c;
+        }
+    }
+
+    public static class CommentRequestBuilder {
+        private static Class<?> clazz;
+
+        public static Class<?> getClazz(Context context) {
+            if (clazz == null) {
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                if (cl != null) clazz = findClassIfExists("x71.g0", cl);
+            }
+            return clazz;
+        }
+
+        public static void setClazz(Class<?> c) {
+            clazz = c;
+        }
+    }
+
+    public static class PlayerCustomBackground {
+        private static Class<?> clazz;
+
+        public static Class<?> getClazz(Context context) {
+            if (clazz == null) {
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                if (cl != null) clazz = findClassIfExists("com.netease.cloudmusic.module.playerstyle.PlayerCustomBackgroundView", cl);
+            }
+            return clazz;
+        }
+
+        public static void setClazz(Class<?> c) {
+            clazz = c;
+        }
+    }
+
+    public static class PlayerChildBackground {
+        private static Class<?> clazz;
+
+        public static Class<?> getClazz(Context context) {
+            if (clazz == null) {
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                if (cl != null) clazz = findClassIfExists("com.netease.cloudmusic.ui.PlayerChildBackgroundView", cl);
+            }
+            return clazz;
+        }
+
+        public static void setClazz(Class<?> c) {
+            clazz = c;
         }
     }
 }

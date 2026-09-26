@@ -220,6 +220,12 @@ public class SettingHelper {
         settingMap.put(beauty_black_hide_key, sharedPreferences.getBoolean(beauty_black_hide_key, false));
         settingMap.put(beauty_comment_hot_key, sharedPreferences.getBoolean(beauty_comment_hot_key, false));
         settingMap.put(beauty_background_key, sharedPreferences.getBoolean(beauty_background_key, false));
+
+        if (sidebarSettingMap != null) {
+            sidebarSettingMap.clear();
+        }
+        sidebarSettingMap = null;
+        getSidebarSetting(null);
     }
 
     public void setSetting(String key, boolean value) {
@@ -232,7 +238,17 @@ public class SettingHelper {
             return isSidebarHideEnable();
         }
         Boolean value = settingMap.get(key);
-        return value != null && value;
+        if (value != null) {
+            return value;
+        }
+        if (sidebarSettingMap != null && sidebarSettingMap.containsKey(key)) {
+            Boolean sidebarVal = sidebarSettingMap.get(key);
+            return sidebarVal != null && sidebarVal;
+        }
+        if (sharedPreferences != null && sharedPreferences.contains(key)) {
+            return sharedPreferences.getBoolean(key, false);
+        }
+        return false;
     }
 
     public boolean isEnable(String key) {
@@ -422,8 +438,7 @@ public class SettingHelper {
         return sharedPreferences.getString(SettingHelper.background_url_key, SettingHelper.background_url_default);
     }
     public void setPictureUrl(String url) {
-        if (!TextUtils.isEmpty(url))
-            sharedPreferences.edit().putString(SettingHelper.background_url_key, url).apply();
+        sharedPreferences.edit().putString(SettingHelper.background_url_key, url != null ? url : "").apply();
     }
     public int getBackgroundBlur() {
         return sharedPreferences.getInt(SettingHelper.background_blur_key, SettingHelper.background_blur_default);

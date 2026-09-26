@@ -103,8 +103,11 @@ public class HideSidebarHook {
             }
         }
 
-        // 4. 9.x+ 新版侧边栏：Hook 数据层 (com.netease.cloudmusic.music.biz.sidebar.account.j)
-        Class<?> jClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.music.biz.sidebar.account.j", context.getClassLoader());
+        // 4. 9.x+ 新版侧边栏：Hook 数据层 (DexKit 动态解析或 com.netease.cloudmusic.music.biz.sidebar.account.j)
+        Class<?> jClass = ClassHelper.SidebarItem.getClazz(context);
+        if (jClass == null) {
+            jClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.music.biz.sidebar.account.j", context.getClassLoader());
+        }
         if (jClass != null) {
             XposedBridge.hookAllConstructors(jClass, new XC_MethodHook() {
                 @Override

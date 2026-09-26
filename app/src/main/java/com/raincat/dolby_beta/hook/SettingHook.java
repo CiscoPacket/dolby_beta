@@ -145,6 +145,14 @@ public class SettingHook {
             XposedBridge.log("[dolby_beta] hook Activity.onActivityResult failed: " + t);
         }
 
+        Class<?> fragActivityClz = findClassIfExists("androidx.fragment.app.FragmentActivity", context.getClassLoader());
+        if (fragActivityClz != null) {
+            try {
+                findAndHookMethod(fragActivityClz, "onActivityResult", int.class, int.class, Intent.class, activityResultHook);
+            } catch (Throwable ignored) {
+            }
+        }
+
         hookRnSettingPage(context.getClassLoader());
         Class<?> settingActivityClass = resolveSettingActivity(context.getClassLoader(), versionCode);
         if (settingActivityClass == null) {
