@@ -128,9 +128,15 @@ public class SettingHook {
             Intent data = (Intent) param.args[2];
             if (requestCode == REQUEST_CODE_PICK_BG) {
                 param.setResult(null);
-                if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
-                    Activity activity = (Activity) param.thisObject;
-                    handleSelectedImageUri(activity, data.getData());
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    android.net.Uri uri = data.getData();
+                    if (uri == null && data.getClipData() != null && data.getClipData().getItemCount() > 0) {
+                        uri = data.getClipData().getItemAt(0).getUri();
+                    }
+                    if (uri != null) {
+                        Activity activity = (Activity) param.thisObject;
+                        handleSelectedImageUri(activity, uri);
+                    }
                 }
             }
         }
@@ -139,6 +145,32 @@ public class SettingHook {
     private BroadcastReceiver broadcastReceiver;
 
     public SettingHook(Context context, int versionCode) {
+        try {
+            findAndHookMethod(Activity.class, "dispatchActivityResult", String.class, int.class, int.class, Intent.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    int requestCode = (int) param.args[1];
+                    int resultCode = (int) param.args[2];
+                    Intent data = (Intent) param.args[3];
+                    if (requestCode == REQUEST_CODE_PICK_BG) {
+                        param.setResult(null);
+                        if (resultCode == Activity.RESULT_OK && data != null) {
+                            android.net.Uri uri = data.getData();
+                            if (uri == null && data.getClipData() != null && data.getClipData().getItemCount() > 0) {
+                                uri = data.getClipData().getItemAt(0).getUri();
+                            }
+                            if (uri != null) {
+                                Activity activity = (Activity) param.thisObject;
+                                handleSelectedImageUri(activity, uri);
+                            }
+                        }
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            XposedBridge.log("[dolby_beta] hook Activity.dispatchActivityResult failed: " + t);
+        }
+
         try {
             findAndHookMethod(Activity.class, "onActivityResult", int.class, int.class, Intent.class, activityResultHook);
         } catch (Throwable t) {
@@ -1795,16 +1827,19 @@ public class SettingHook {
 
                 destFile.setLastModified(System.currentTimeMillis());
 
+                SettingHelper.getInstance().setSetting(SettingHelper.beauty_background_key, true);
                 SettingHelper.getInstance().setPictureUrl(destFile.getAbsolutePath());
 
-                Intent intent = new Intent(SettingHelper.refresh_setting);
-                LocalBroadcastManager.getInstance(activity).sendBroadcast(intent);
-                try {
-                    activity.sendBroadcast(intent);
-                } catch (Throwable ignored) {
-                }
-
                 activity.runOnUiThread(() -> {
+                    try {
+                        Intent refreshIntent = new Intent(SettingHelper.refresh_setting);
+                        LocalBroadcastManager.getInstance(activity).sendBroadcast(refreshIntent);
+                        try {
+                            activity.sendBroadcast(refreshIntent);
+                        } catch (Throwable ignored) {
+                        }
+                    } catch (Throwable ignored) {
+                    }
                     Toast.makeText(activity, "背景图片选择成功！", Toast.LENGTH_SHORT).show();
                 });
             } catch (Throwable t) {

@@ -1,7 +1,11 @@
 package com.raincat.dolby_beta.hook;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
@@ -53,6 +57,7 @@ public class PlayerActivityHook {
     private static WeakReference<View> sLastChildBgView;
     private static String sCachedKey = null;
     private static Bitmap sCachedBitmap = null;
+    private static BroadcastReceiver sBgSettingReceiver = null;
 
     public PlayerActivityHook(final Context context, final int versionCode) {
         // 1. 播放界面 (PlayerActivity)
@@ -67,6 +72,31 @@ public class PlayerActivityHook {
                         sLastPlayerActivity = new WeakReference<>(activity);
                         sLastContext = new WeakReference<>(activity);
                         setupPlayerBackground(activity);
+                        if (sBgSettingReceiver == null) {
+                            sBgSettingReceiver = new BroadcastReceiver() {
+                                @Override
+                                public void onReceive(Context ctx, Intent intent) {
+                                    if (intent != null && SettingHelper.refresh_setting.equals(intent.getAction())) {
+                                        Activity act = sLastPlayerActivity != null ? sLastPlayerActivity.get() : null;
+                                        if (act != null) {
+                                            SettingHelper.getInstance().refreshSetting(act);
+                                            sCachedKey = null;
+                                            sCachedBitmap = null;
+                                            setupPlayerBackground(act);
+                                            reloadBackground();
+                                        }
+                                    }
+                                }
+                            };
+                            try {
+                                LocalBroadcastManager.getInstance(activity).registerReceiver(sBgSettingReceiver, new IntentFilter(SettingHelper.refresh_setting));
+                            } catch (Throwable ignored) {
+                            }
+                            try {
+                                activity.registerReceiver(sBgSettingReceiver, new IntentFilter(SettingHelper.refresh_setting));
+                            } catch (Throwable ignored) {
+                            }
+                        }
                         final View decorView = activity.getWindow().getDecorView();
                         decorView.post(() -> {
                             applyBlackHideFromDecorView(decorView);
@@ -77,6 +107,27 @@ public class PlayerActivityHook {
                     }
                 }
             });
+
+            try {
+                XposedHelpers.findAndHookMethod(playerActivityClass, "onDestroy", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (sBgSettingReceiver != null && param.thisObject instanceof Activity) {
+                            Activity activity = (Activity) param.thisObject;
+                            try {
+                                LocalBroadcastManager.getInstance(activity).unregisterReceiver(sBgSettingReceiver);
+                            } catch (Throwable ignored) {
+                            }
+                            try {
+                                activity.unregisterReceiver(sBgSettingReceiver);
+                            } catch (Throwable ignored) {
+                            }
+                            sBgSettingReceiver = null;
+                        }
+                    }
+                });
+            } catch (Throwable ignored) {
+            }
 
             try {
                 XposedHelpers.findAndHookMethod(playerActivityClass, "onResume", new XC_MethodHook() {
@@ -95,6 +146,38 @@ public class PlayerActivityHook {
                     }
                 });
             } catch (Throwable ignored) {
+            }
+
+            // Hook PlayerActivity.of(Drawable, ...) - 9.6+ 设置播放页背景与主色调的核心入口
+            for (Method m : playerActivityClass.getDeclaredMethods()) {
+                if ("of".equals(m.getName()) && m.getParameterTypes().length == 4 && m.getParameterTypes()[0] == Drawable.class) {
+                    try {
+                        XposedBridge.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key))
+                                    return;
+                                Activity act = (Activity) param.thisObject;
+                                Bitmap blurred = getCustomBlurredBitmap(act);
+                                if (blurred != null) {
+                                    param.args[0] = new BitmapDrawable(act.getResources(), blurred);
+                                }
+                            }
+
+                            @Override
+                            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key))
+                                    return;
+                                Activity act = (Activity) param.thisObject;
+                                Bitmap blurred = getCustomBlurredBitmap(act);
+                                if (blurred != null) {
+                                    applyToAllBgViews(blurred, act);
+                                }
+                            }
+                        });
+                    } catch (Throwable ignored) {
+                    }
+                }
             }
         }
 
@@ -329,6 +412,53 @@ public class PlayerActivityHook {
             }
         }
 
+        // 4.1 9.6+ 播放页核心背景承载控件 (PlayerPageImageView & PlayerBackgroundImage extends ImageView)
+        XC_MethodHook ivDrawableHook = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
+                    return;
+                }
+                Object obj = param.thisObject;
+                if (obj == null) return;
+                String name = obj.getClass().getName();
+                if (name.contains("PlayerPageImageView") || name.contains("PlayerBackgroundImage")) {
+                    View v = (View) obj;
+                    Bitmap blurred = getCustomBlurredBitmap(v.getContext());
+                    if (blurred != null) {
+                        param.args[0] = new BitmapDrawable(v.getResources(), blurred);
+                    }
+                }
+            }
+        };
+        try {
+            XposedHelpers.findAndHookMethod(ImageView.class, "setImageDrawable", Drawable.class, ivDrawableHook);
+        } catch (Throwable ignored) {
+        }
+
+        XC_MethodHook ivBitmapHook = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
+                    return;
+                }
+                Object obj = param.thisObject;
+                if (obj == null) return;
+                String name = obj.getClass().getName();
+                if (name.contains("PlayerPageImageView") || name.contains("PlayerBackgroundImage")) {
+                    View v = (View) obj;
+                    Bitmap blurred = getCustomBlurredBitmap(v.getContext());
+                    if (blurred != null) {
+                        param.args[0] = blurred;
+                    }
+                }
+            }
+        };
+        try {
+            XposedHelpers.findAndHookMethod(ImageView.class, "setImageBitmap", Bitmap.class, ivBitmapHook);
+        } catch (Throwable ignored) {
+        }
+
         // 兼容旧版混淆类
         Class<?> rClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.r", context.getClassLoader());
         if (rClass != null) {
@@ -481,6 +611,10 @@ public class PlayerActivityHook {
                 if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)
                         && !TextUtils.isEmpty(SettingHelper.getInstance().getPictureUrl())) {
                     bgImageView.setVisibility(View.VISIBLE);
+                    Bitmap blurred = getCustomBlurredBitmap(activity);
+                    if (blurred != null) {
+                        applyToAllBgViews(blurred, activity);
+                    }
                 } else {
                     bgImageView.setVisibility(View.GONE);
                 }
@@ -641,6 +775,13 @@ public class PlayerActivityHook {
                     Object d1 = XposedHelpers.getObjectField(act, "d1");
                     if (d1 instanceof ImageView) {
                         ((ImageView) d1).setImageDrawable(drawable);
+                    }
+                } catch (Throwable ignored) {
+                }
+                try {
+                    Object j = XposedHelpers.getObjectField(act, "j");
+                    if (j instanceof ImageView) {
+                        ((ImageView) j).setImageDrawable(drawable);
                     }
                 } catch (Throwable ignored) {
                 }
@@ -860,6 +1001,25 @@ public class PlayerActivityHook {
         } else {
             targetView.post(apply);
         }
+    }
+
+    public static Bitmap getCustomBlurredBitmap(Context context) {
+        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
+            return null;
+        }
+        String customPath = SettingHelper.getInstance().getPictureUrl();
+        if (TextUtils.isEmpty(customPath)) {
+            return null;
+        }
+        String cleanPath = customPath.startsWith("file://") ? customPath.substring(7) : customPath;
+        if (cleanPath.startsWith("/")) {
+            File file = new File(cleanPath);
+            if (file.exists() && file.isFile() && file.length() > 0) {
+                int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
+                return getOrLoadBlurredBitmap(file, blurRadius, context);
+            }
+        }
+        return sCachedBitmap;
     }
 
     private static synchronized Bitmap getOrLoadBlurredBitmap(File file, int blurRadius, Context context) {

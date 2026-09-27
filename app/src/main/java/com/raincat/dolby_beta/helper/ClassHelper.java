@@ -74,6 +74,10 @@ public class ClassHelper {
     private static final String KEY_PLAYER_CUSTOM_BG = "player_custom_bg_class_";
     private static final String KEY_PLAYER_CHILD_BG = "player_child_bg_class_";
     private static final String KEY_BITMAP_WORKER_TASK = "bitmap_worker_task_class_";
+    private static final String KEY_PLAYER_PAGE_IMAGE_VIEW = "player_page_image_view_class_";
+    private static final String KEY_MAIN_DRAWER_DYNAMIC_ITEM = "main_drawer_dynamic_item_class_";
+    private static final String KEY_COMMENT_REQUEST_DATA = "comment_request_data_class_";
+    private static final String KEY_COMMENT_REQUEST_UTIL = "comment_request_util_class_";
 
     public interface OnCacheClassListener {
         void onGet();
@@ -173,6 +177,18 @@ public class ClassHelper {
             String bwtName = sp.getString(KEY_BITMAP_WORKER_TASK + version, null);
             if (bwtName != null) BitmapWorkerTask.clazz = findClassIfExists(bwtName, classLoader);
 
+            String ppivName = sp.getString(KEY_PLAYER_PAGE_IMAGE_VIEW + version, null);
+            if (ppivName != null) PlayerPageImageView.clazz = findClassIfExists(ppivName, classLoader);
+
+            String mddName = sp.getString(KEY_MAIN_DRAWER_DYNAMIC_ITEM + version, null);
+            if (mddName != null) MainDrawerDynamicItem.clazz = findClassIfExists(mddName, classLoader);
+
+            String crdName = sp.getString(KEY_COMMENT_REQUEST_DATA + version, null);
+            if (crdName != null) CommentRequestData.clazz = findClassIfExists(crdName, classLoader);
+
+            String cruName = sp.getString(KEY_COMMENT_REQUEST_UTIL + version, null);
+            if (cruName != null) CommentRequestUtil.clazz = findClassIfExists(cruName, classLoader);
+
             return true;
         } catch (Throwable t) {
             XposedBridge.log("[dolby_beta] loadFromCache error: " + t.getMessage());
@@ -198,6 +214,10 @@ public class ClassHelper {
             if (PlayerCustomBackground.clazz != null) editor.putString(KEY_PLAYER_CUSTOM_BG + version, PlayerCustomBackground.clazz.getName());
             if (PlayerChildBackground.clazz != null) editor.putString(KEY_PLAYER_CHILD_BG + version, PlayerChildBackground.clazz.getName());
             if (BitmapWorkerTask.clazz != null) editor.putString(KEY_BITMAP_WORKER_TASK + version, BitmapWorkerTask.clazz.getName());
+            if (PlayerPageImageView.clazz != null) editor.putString(KEY_PLAYER_PAGE_IMAGE_VIEW + version, PlayerPageImageView.clazz.getName());
+            if (MainDrawerDynamicItem.clazz != null) editor.putString(KEY_MAIN_DRAWER_DYNAMIC_ITEM + version, MainDrawerDynamicItem.clazz.getName());
+            if (CommentRequestData.clazz != null) editor.putString(KEY_COMMENT_REQUEST_DATA + version, CommentRequestData.clazz.getName());
+            if (CommentRequestUtil.clazz != null) editor.putString(KEY_COMMENT_REQUEST_UTIL + version, CommentRequestUtil.clazz.getName());
             editor.apply();
             XposedBridge.log("[dolby_beta] Saved hook classes to cache for version " + version);
         } catch (Throwable t) {
@@ -213,8 +233,9 @@ public class ClassHelper {
 
         // 2. If any core class is missing, leverage DexKit dynamic Dex analysis
         if (HttpResponse.clazz == null || HttpInterceptor.clazz == null || DownloadTransfer.clazz == null || Ad.clazz == null
-                || TabManager.clazz == null || CommentRequestBuilder.clazz == null || PlayerCustomBackground.clazz == null
-                || PlayerChildBackground.clazz == null) {
+                || TabManager.clazz == null || CommentRequestBuilder.clazz == null || CommentRequestData.clazz == null
+                || CommentRequestUtil.clazz == null || PlayerCustomBackground.clazz == null
+                || PlayerChildBackground.clazz == null || PlayerPageImageView.clazz == null || MainDrawerDynamicItem.clazz == null) {
             resolveWithDexKit(context);
         }
 
@@ -276,6 +297,26 @@ public class ClassHelper {
                 if (BitmapWorkerTask.clazz == null) {
                     BitmapWorkerTask.clazz = findClassIfExists("com.yalantis.ucrop.task.BitmapWorkerTask", classLoader);
                 }
+            }
+
+            // PlayerPageImageView
+            if (PlayerPageImageView.clazz == null) {
+                PlayerPageImageView.clazz = findClassIfExists("com.netease.cloudmusic.ui.PlayerPageImageView", classLoader);
+            }
+
+            // MainDrawerDynamicItem
+            if (MainDrawerDynamicItem.clazz == null) {
+                MainDrawerDynamicItem.clazz = findClassIfExists("com.netease.cloudmusic.music.biz.sidebar.account.MainDrawerDynamicItem", classLoader);
+            }
+
+            // CommentRequestData
+            if (CommentRequestData.clazz == null) {
+                CommentRequestData.clazz = findClassIfExists("com.netease.cloudmusic.music.biz.comment.meta.CommentRequestData", classLoader);
+            }
+
+            // CommentRequestUtil
+            if (CommentRequestUtil.clazz == null) {
+                CommentRequestUtil.clazz = findClassIfExists("com.netease.cloudmusic.music.biz.comment.q", classLoader);
             }
 
             // HttpInterceptor: com.netease.cloudmusic.network.interceptor.q
@@ -598,6 +639,60 @@ public class ClassHelper {
                 if (!bwtList.isEmpty()) {
                     BitmapWorkerTask.clazz = bwtList.get(0).getInstance(classLoader);
                     XposedBridge.log("[dolby_beta] DexKit found BitmapWorkerTask: " + BitmapWorkerTask.clazz.getName());
+                }
+            }
+
+            // 11. PlayerPageImageView
+            if (PlayerPageImageView.clazz == null) {
+                ClassDataList ppivList = bridge.findClass(FindClass.create()
+                        .searchPackages("com.netease.cloudmusic.ui")
+                        .matcher(ClassMatcher.create()
+                                .superClass("androidx.appcompat.widget.AppCompatImageView")
+                                .addMethod(MethodMatcher.create().name("setTintWithUIMode"))));
+                if (!ppivList.isEmpty()) {
+                    PlayerPageImageView.clazz = ppivList.get(0).getInstance(classLoader);
+                    XposedBridge.log("[dolby_beta] DexKit found PlayerPageImageView: " + PlayerPageImageView.clazz.getName());
+                }
+            }
+
+            // 12. MainDrawerDynamicItem
+            if (MainDrawerDynamicItem.clazz == null) {
+                ClassDataList mddList = bridge.findClass(FindClass.create()
+                        .searchPackages("com.netease.cloudmusic.music.biz.sidebar.account")
+                        .matcher(ClassMatcher.create()
+                                .addMethod(MethodMatcher.create().name("getResourceType").returnType("java.lang.String"))
+                                .addMethod(MethodMatcher.create().name("getLogInfo").returnType("java.util.Map"))));
+                if (!mddList.isEmpty()) {
+                    MainDrawerDynamicItem.clazz = mddList.get(0).getInstance(classLoader);
+                    XposedBridge.log("[dolby_beta] DexKit found MainDrawerDynamicItem: " + MainDrawerDynamicItem.clazz.getName());
+                }
+            }
+
+            // 13. CommentRequestData
+            if (CommentRequestData.clazz == null) {
+                ClassDataList crdList = bridge.findClass(FindClass.create()
+                        .searchPackages("com.netease.cloudmusic.music.biz.comment")
+                        .matcher(ClassMatcher.create()
+                                .addMethod(MethodMatcher.create().name("getSortType").returnType("int"))
+                                .addMethod(MethodMatcher.create().name("setSortType").paramTypes("int"))
+                                .addMethod(MethodMatcher.create().name("getFirst").returnType("boolean"))));
+                if (!crdList.isEmpty()) {
+                    CommentRequestData.clazz = crdList.get(0).getInstance(classLoader);
+                    XposedBridge.log("[dolby_beta] DexKit found CommentRequestData: " + CommentRequestData.clazz.getName());
+                }
+            }
+
+            // 14. CommentRequestUtil
+            if (CommentRequestUtil.clazz == null) {
+                ClassDataList cruList = bridge.findClass(FindClass.create()
+                        .searchPackages("com.netease.cloudmusic.music.biz.comment")
+                        .matcher(ClassMatcher.create()
+                                .addMethod(MethodMatcher.create()
+                                        .name("k")
+                                        .paramTypes("com.netease.cloudmusic.music.biz.comment.meta.CommentRequestData"))));
+                if (!cruList.isEmpty()) {
+                    CommentRequestUtil.clazz = cruList.get(0).getInstance(classLoader);
+                    XposedBridge.log("[dolby_beta] DexKit found CommentRequestUtil: " + CommentRequestUtil.clazz.getName());
                 }
             }
         } catch (Throwable t) {
@@ -1263,4 +1358,69 @@ public class ClassHelper {
             clazz = c;
         }
     }
+
+    public static class PlayerPageImageView {
+        private static Class<?> clazz;
+
+        public static Class<?> getClazz(Context context) {
+            if (clazz == null) {
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                if (cl != null) clazz = findClassIfExists("com.netease.cloudmusic.ui.PlayerPageImageView", cl);
+            }
+            return clazz;
+        }
+
+        public static void setClazz(Class<?> c) {
+            clazz = c;
+        }
+    }
+
+    public static class MainDrawerDynamicItem {
+        private static Class<?> clazz;
+
+        public static Class<?> getClazz(Context context) {
+            if (clazz == null) {
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                if (cl != null) clazz = findClassIfExists("com.netease.cloudmusic.music.biz.sidebar.account.MainDrawerDynamicItem", cl);
+            }
+            return clazz;
+        }
+
+        public static void setClazz(Class<?> c) {
+            clazz = c;
+        }
+    }
+
+    public static class CommentRequestData {
+        private static Class<?> clazz;
+
+        public static Class<?> getClazz(Context context) {
+            if (clazz == null) {
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                if (cl != null) clazz = findClassIfExists("com.netease.cloudmusic.music.biz.comment.meta.CommentRequestData", cl);
+            }
+            return clazz;
+        }
+
+        public static void setClazz(Class<?> c) {
+            clazz = c;
+        }
+    }
+
+    public static class CommentRequestUtil {
+        private static Class<?> clazz;
+
+        public static Class<?> getClazz(Context context) {
+            if (clazz == null) {
+                ClassLoader cl = classLoader != null ? classLoader : (context != null ? context.getClassLoader() : null);
+                if (cl != null) clazz = findClassIfExists("com.netease.cloudmusic.music.biz.comment.q", cl);
+            }
+            return clazz;
+        }
+
+        public static void setClazz(Class<?> c) {
+            clazz = c;
+        }
+    }
 }
+

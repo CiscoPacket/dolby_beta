@@ -24,12 +24,12 @@ import de.robv.android.xposed.XposedHelpers;
  * <pre>
  *     author : RainCat & Cisco
  *     desc   : 评论区优先显示“最热”内容 (首次进入默认最热，且允许自由切换至推荐或最新)
- *     version: 5.0
+ *     version: 6.0
  * </pre>
  */
 public class CommentHotClickHook {
-    // 标记当前歌曲评论区是否处于首次加载阶段
-    private static volatile boolean sInitialCommentLoad = true;
+    private static volatile String sLastSongThreadId = null;
+    private static volatile boolean sInitialLoadedForCurrentSong = false;
 
     public CommentHotClickHook(Context context) {
         // 1. 旧版评论数据模型兼容
@@ -56,7 +56,7 @@ public class CommentHotClickHook {
             });
         }
 
-        // 2. 评论界面生命周期感知：新评论界面打开时重置首次加载标记
+        // 2. 评论界面生命周期感知：新评论界面打开或销毁时重置状态
         String[] fragmentNames = new String[]{
                 "com.netease.cloudmusic.music.biz.comment.fragment.CommentFragment",
                 "com.netease.cloudmusic.music.biz.comment.disccomment.container.PlayerCommentFragment"
@@ -68,7 +68,18 @@ public class CommentHotClickHook {
                     XposedHelpers.findAndHookMethod(fCls, "onCreate", Bundle.class, new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                            sInitialCommentLoad = true;
+                            sLastSongThreadId = null;
+                            sInitialLoadedForCurrentSong = false;
+                        }
+                    });
+                } catch (Throwable ignored) {
+                }
+                try {
+                    XposedHelpers.findAndHookMethod(fCls, "onDestroy", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            sLastSongThreadId = null;
+                            sInitialLoadedForCurrentSong = false;
                         }
                     });
                 } catch (Throwable ignored) {
@@ -76,25 +87,7 @@ public class CommentHotClickHook {
             }
         }
 
-        // 3. 用户手动点击切换Tab监听：一旦手动切换Tab，立即解除首次加载拦截，允许自由切换推荐/最新
-        Class<?> tabListenerClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.music.biz.comment.fragment.CommentFragment$c", context.getClassLoader());
-        if (tabListenerClass != null) {
-            try {
-                for (Method m : tabListenerClass.getDeclaredMethods()) {
-                    if ("onTabSelected".equals(m.getName())) {
-                        XposedBridge.hookMethod(m, new XC_MethodHook() {
-                            @Override
-                            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                                sInitialCommentLoad = false;
-                            }
-                        });
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-
-        // 4. 9.x+ 评论网络请求构建器 (DexKit 动态解析或 x71.g0) 参数拦截
+        // 3. 9.x+ 评论网络请求构建器 (DexKit 动态解析或 x71.g0) 参数拦截
         Class<?> g0Class = ClassHelper.CommentRequestBuilder.getClazz(context);
         if (g0Class == null) {
             g0Class = XposedHelpers.findClassIfExists("x71.g0", context.getClassLoader());
@@ -111,12 +104,8 @@ public class CommentHotClickHook {
                                     return;
                                 Object crd = param.getResult();
                                 if (crd != null) {
-                                    try {
-                                        XposedHelpers.callMethod(crd, "setSortType", 2);
-                                    } catch (Throwable ignored) {
-                                    }
+                                    ensureHotOnInitial(crd);
                                 }
-                                sInitialCommentLoad = false;
                             }
                         });
                         break;
@@ -131,18 +120,8 @@ public class CommentHotClickHook {
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
                         return;
-                    if (sInitialCommentLoad && param.args != null) {
-                        for (Object arg : param.args) {
-                            if (arg != null) {
-                                try {
-                                    int st = (int) XposedHelpers.callMethod(arg, "getSortType");
-                                    if (st != 2 && st != 3) {
-                                        XposedHelpers.callMethod(arg, "setSortType", 2);
-                                    }
-                                } catch (Throwable ignored) {
-                                }
-                            }
-                        }
+                    if (param.args != null && param.args.length > 0 && param.args[0] != null) {
+                        ensureHotOnInitial(param.args[0]);
                     }
                 }
 
@@ -150,24 +129,21 @@ public class CommentHotClickHook {
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
                         return;
-                    // 仅当为首次进入评论区 (sInitialCommentLoad == true) 时将参数重定向为最热 (sortType = 2)
-                    if (!sInitialCommentLoad) {
-                        return;
-                    }
+                    if (!sInitialLoadedForCurrentSong) return;
                     Object res = param.getResult();
                     if (res != null) {
                         try {
                             Object mapObj = XposedHelpers.callMethod(res, "getParamMap");
                             if (mapObj instanceof Map) {
                                 Map map = (Map) mapObj;
-                                if (map.containsKey("sortType")) {
-                                    Object currentSt = map.get("sortType");
-                                    if (currentSt != null && !"3".equals(currentSt.toString()) && !Integer.valueOf(3).equals(currentSt)) {
-                                        map.put("sortType", 2);
+                                Object currentSt = map.get("sortType");
+                                if (currentSt != null && ("1".equals(currentSt.toString()) || Integer.valueOf(1).equals(currentSt) || "99".equals(currentSt.toString()) || Integer.valueOf(99).equals(currentSt))) {
+                                    // 仅当首次加载时确保最热
+                                    if (sInitialLoadedForCurrentSong) {
+                                        // initial load done, let user requests pass
                                     }
                                 }
                             }
-                            sInitialCommentLoad = false;
                         } catch (Throwable ignored) {
                         }
                     }
@@ -185,7 +161,99 @@ public class CommentHotClickHook {
             }
         }
 
-        // 5. 评论排序Tab模型 (SortTypeList.parseList) 将最热置于第1位，推荐置于第2位，最新置于第3位
+        // 4. 9.6+ 核心评论数据模型 CommentRequestData (DexKit 动态匹配)
+        Class<?> crdClass = ClassHelper.CommentRequestData.getClazz(context);
+        if (crdClass != null) {
+            XposedBridge.hookAllConstructors(crdClass, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
+                        return;
+                    // 在构造方法中检查参数是否为首次请求并修正为最热 (sortType=2)
+                    if (param.args != null && param.args.length > 4) {
+                        if (param.args[4] instanceof Integer) {
+                            String tid = param.args[0] != null ? param.args[0].toString() : null;
+                            boolean isNewSong = (tid != null && !tid.equals(sLastSongThreadId)) || sLastSongThreadId == null;
+                            if (isNewSong) {
+                                if (tid != null) sLastSongThreadId = tid;
+                                sInitialLoadedForCurrentSong = false;
+                            }
+                            if (!sInitialLoadedForCurrentSong) {
+                                int st = (Integer) param.args[4];
+                                if (st == 1 || st == 99 || st == 0) {
+                                    param.args[4] = 2;
+                                    sInitialLoadedForCurrentSong = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
+                        return;
+                    Object crd = param.thisObject;
+                    if (crd != null) {
+                        ensureHotOnInitial(crd);
+                    }
+                }
+            });
+        }
+
+        // 5. 9.6+ 评论网络请求转换核心工具类 CommentRequestUtil (DexKit 动态匹配)
+        Class<?> cruClass = ClassHelper.CommentRequestUtil.getClazz(context);
+        if (cruClass != null) {
+            for (Method m : cruClass.getDeclaredMethods()) {
+                if ("k".equals(m.getName()) && m.getParameterTypes().length == 1) {
+                    try {
+                        XposedBridge.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
+                                    return;
+                                Object crd = param.args[0];
+                                if (crd != null) {
+                                    ensureHotOnInitial(crd);
+                                }
+                            }
+
+                            @Override
+                            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_comment_hot_key))
+                                    return;
+                                Object jsonAndTraceId = param.getResult();
+                                if (jsonAndTraceId != null) {
+                                    try {
+                                        JSONObject json = (JSONObject) XposedHelpers.getObjectField(jsonAndTraceId, "json");
+                                        if (json != null) {
+                                            String tid = json.optString("threadId", "");
+                                            boolean isNewSong = (!tid.isEmpty() && !tid.equals(sLastSongThreadId)) || sLastSongThreadId == null;
+                                            if (isNewSong) {
+                                                if (!tid.isEmpty()) sLastSongThreadId = tid;
+                                                sInitialLoadedForCurrentSong = false;
+                                            }
+                                            if (!sInitialLoadedForCurrentSong) {
+                                                int st = json.optInt("sortType", 0);
+                                                if (st == 1 || st == 99 || st == 0) {
+                                                    json.put("sortType", 2);
+                                                    sInitialLoadedForCurrentSong = true;
+                                                }
+                                            }
+                                        }
+                                    } catch (Throwable ignored) {
+                                    }
+                                }
+                            }
+                        });
+                    } catch (Throwable ignored) {
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 6. 评论排序Tab模型 (SortTypeList.parseList) 将最热置于第1位，推荐置于第2位，最新置于第3位
         Class<?> sortTypeListClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.music.biz.comment.meta.SortTypeList", context.getClassLoader());
         if (sortTypeListClass == null) {
             sortTypeListClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.module.comment2.meta.SortTypeList", context.getClassLoader());
@@ -234,6 +302,42 @@ public class CommentHotClickHook {
                     }
                 }
             });
+        }
+    }
+
+    private static void ensureHotOnInitial(Object crd) {
+        if (crd == null) return;
+        try {
+            String threadId = null;
+            try {
+                Object tid = XposedHelpers.callMethod(crd, "getThreadId");
+                if (tid != null) threadId = tid.toString();
+            } catch (Throwable ignored) {
+            }
+            if (threadId == null) {
+                try {
+                    Object rid = XposedHelpers.callMethod(crd, "getResId");
+                    if (rid != null) threadId = rid.toString();
+                } catch (Throwable ignored) {
+                }
+            }
+
+            boolean isNewSong = (threadId != null && !threadId.equals(sLastSongThreadId)) || sLastSongThreadId == null;
+            if (isNewSong) {
+                if (threadId != null) {
+                    sLastSongThreadId = threadId;
+                }
+                sInitialLoadedForCurrentSong = false;
+            }
+
+            if (!sInitialLoadedForCurrentSong) {
+                int st = (int) XposedHelpers.callMethod(crd, "getSortType");
+                if (st == 1 || st == 99 || st == 0) {
+                    XposedHelpers.callMethod(crd, "setSortType", 2);
+                    sInitialLoadedForCurrentSong = true;
+                }
+            }
+        } catch (Throwable ignored) {
         }
     }
 }

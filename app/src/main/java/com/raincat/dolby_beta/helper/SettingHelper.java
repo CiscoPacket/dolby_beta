@@ -439,7 +439,7 @@ public class SettingHelper {
         return sharedPreferences.getString(SettingHelper.background_url_key, SettingHelper.background_url_default);
     }
     public void setPictureUrl(String url) {
-        sharedPreferences.edit().putString(SettingHelper.background_url_key, url != null ? url : "").apply();
+        sharedPreferences.edit().putString(SettingHelper.background_url_key, url != null ? url : "").commit();
     }
     public int getBackgroundBlur() {
         return sharedPreferences.getInt(SettingHelper.background_blur_key, SettingHelper.background_blur_default);
@@ -447,6 +447,6 @@ public class SettingHelper {
 
     public void setBackgroundBlur(String blur) {
         if (!TextUtils.isEmpty(blur))
-            sharedPreferences.edit().putInt(SettingHelper.background_blur_key, Integer.parseInt(blur)).apply();
+            sharedPreferences.edit().putInt(SettingHelper.background_blur_key, Integer.parseInt(blur)).commit();
     }
 }

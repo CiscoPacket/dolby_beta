@@ -3,6 +3,7 @@ package com.raincat.dolby_beta.view.beauty.background;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.widget.Toast;
@@ -42,8 +43,9 @@ public class BackgroundLocalPictureView extends BaseDialogItem {
                     .setTitle("本地背景图片")
                     .setItems(new String[]{"从相册 / 文件选择", "清除背景图片"}, (dialog, which) -> {
                         if (which == 0) {
-                            if (context instanceof Activity) {
-                                SettingHook.startImagePicker((Activity) context);
+                            Activity activity = getActivity(context);
+                            if (activity != null) {
+                                SettingHook.startImagePicker(activity);
                             } else {
                                 Toast.makeText(context, "当前环境不支持打开系统选择器", Toast.LENGTH_SHORT).show();
                             }
@@ -84,5 +86,15 @@ public class BackgroundLocalPictureView extends BaseDialogItem {
         if (subView != null && sub != null) {
             subView.setText(sub);
         }
+    }
+
+    private static Activity getActivity(Context context) {
+        while (context instanceof ContextWrapper) {
+            if (context instanceof Activity) {
+                return (Activity) context;
+            }
+            context = ((ContextWrapper) context).getBaseContext();
+        }
+        return null;
     }
 }

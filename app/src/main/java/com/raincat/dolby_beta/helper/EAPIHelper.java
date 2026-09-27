@@ -778,7 +778,7 @@ public class EAPIHelper {
     }
 
     /**
-     * 评论区优先显示最热：保证数据中 sortType=2 并将最热排在首位
+     * 评论区优先显示最热：始终将 sortTypeList 中最热排在首位
      */
     public static String modifyCommentHot(String original) {
         if (original == null || original.isEmpty()) return original;
@@ -786,6 +786,7 @@ public class EAPIHelper {
             JSONObject root = new JSONObject(original);
             JSONObject data = root.optJSONObject("data");
             if (data != null) {
+                // 始终重排 sortTypeList 令“最热”排首位，不论当前 sortType 值
                 JSONArray sortTypeList = data.optJSONArray("sortTypeList");
                 if (sortTypeList != null && sortTypeList.length() > 1) {
                     JSONObject hotItem = null;

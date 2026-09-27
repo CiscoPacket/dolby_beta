@@ -156,49 +156,73 @@ public class HideSidebarHook {
         }
 
         // 5. 9.x+ 新版侧边栏：Hook 渲染层 ViewHolder.render 动态隐藏与折叠
-        Class<?> tbvhClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.common.nova.autobind.TypeBindingViewHolder", context.getClassLoader());
-        if (tbvhClass != null) {
-            for (Method m : tbvhClass.getDeclaredMethods()) {
-                if ("render".equals(m.getName())) {
-                    try {
-                        XposedBridge.hookMethod(m, new XC_MethodHook() {
-                            @Override
-                            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                                super.afterHookedMethod(param);
-                                if (param.args == null || param.args.length == 0 || param.args[0] == null) return;
-                                Object item = param.args[0];
-                                String holderName = param.thisObject.getClass().getName();
-                                String itemName = item.getClass().getName();
-                                if (!holderName.contains(".biz.sidebar.") && !itemName.contains("AccountItem")) {
-                                    return;
-                                }
-                                View itemView = null;
-                                try {
-                                    itemView = (View) XposedHelpers.getObjectField(param.thisObject, "itemView");
-                                } catch (Throwable ignored) {
-                                }
-                                if (itemView == null) return;
+        XC_MethodHook renderHook = new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                super.afterHookedMethod(param);
+                if (param.args == null || param.args.length == 0 || param.args[0] == null) return;
+                Object item = param.args[0];
+                View itemView = null;
+                try {
+                    itemView = (View) XposedHelpers.getObjectField(param.thisObject, "itemView");
+                } catch (Throwable ignored) {
+                }
+                if (itemView == null && param.thisObject instanceof View) {
+                    itemView = (View) param.thisObject;
+                }
+                if (itemView == null) return;
 
-                                if (shouldHideItem(item)) {
-                                    itemView.setVisibility(View.GONE);
-                                    ViewGroup.LayoutParams lp = itemView.getLayoutParams();
-                                    if (lp != null) {
-                                        lp.height = 0;
-                                        lp.width = 0;
-                                        itemView.setLayoutParams(lp);
-                                    }
-                                } else {
-                                    itemView.setVisibility(View.VISIBLE);
-                                    ViewGroup.LayoutParams lp = itemView.getLayoutParams();
-                                    if (lp != null && lp.height == 0) {
-                                        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-                                        lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-                                        itemView.setLayoutParams(lp);
-                                    }
-                                }
-                            }
-                        });
-                    } catch (Throwable ignored) {
+                if (shouldHideItem(item)) {
+                    itemView.setVisibility(View.GONE);
+                    ViewGroup.LayoutParams lp = itemView.getLayoutParams();
+                    if (lp != null) {
+                        lp.height = 0;
+                        lp.width = 0;
+                        if (lp instanceof ViewGroup.MarginLayoutParams) {
+                            ((ViewGroup.MarginLayoutParams) lp).setMargins(0, 0, 0, 0);
+                        }
+                        itemView.setLayoutParams(lp);
+                    }
+                    itemView.setPadding(0, 0, 0, 0);
+                } else {
+                    itemView.setVisibility(View.VISIBLE);
+                    ViewGroup.LayoutParams lp = itemView.getLayoutParams();
+                    if (lp != null && lp.height == 0) {
+                        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                        lp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                        itemView.setLayoutParams(lp);
+                    }
+                }
+            }
+        };
+
+        String[] vhClassNames = new String[]{
+                "com.netease.cloudmusic.common.nova.autobind.TypeBindingViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountBaseNormalViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountNormalViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountCloudShellViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountCreatorCenterViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountGroupTitleViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountLogoutViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountMessageViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountPrivacyViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountSBHintViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountSimpleDescViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountSwitchViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountUpgradeNewFrameworkViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.AccountVipStatusViewHolder",
+                "com.netease.cloudmusic.music.biz.sidebar.account.StopTimerViewHolder"
+        };
+
+        for (String vhName : vhClassNames) {
+            Class<?> vhCls = XposedHelpers.findClassIfExists(vhName, context.getClassLoader());
+            if (vhCls != null) {
+                for (Method m : vhCls.getDeclaredMethods()) {
+                    if ("render".equals(m.getName())) {
+                        try {
+                            XposedBridge.hookMethod(m, renderHook);
+                        } catch (Throwable ignored) {
+                        }
                     }
                 }
             }
@@ -307,10 +331,18 @@ public class HideSidebarHook {
         HashMap<String, Boolean> settingMap = SettingHelper.getInstance().getSidebarSetting(null);
         if (settingMap == null || settingMap.isEmpty()) return false;
         try {
-            Object enumObj = XposedHelpers.callMethod(accountItem, "getEnumType");
-            if (enumObj == null) return false;
-            String enumString = enumObj.toString();
-            if (TextUtils.isEmpty(enumString) || "SETTING".equals(enumString)) {
+            Object enumObj = null;
+            try {
+                enumObj = XposedHelpers.callMethod(accountItem, "getEnumType");
+            } catch (Throwable ignored) {
+                try {
+                    enumObj = XposedHelpers.getObjectField(accountItem, "enumType");
+                } catch (Throwable ignored2) {
+                }
+            }
+
+            String enumString = enumObj != null ? enumObj.toString() : "";
+            if ("SETTING".equals(enumString)) {
                 return false;
             }
             if ("GROUP".equals(enumString)) {
@@ -321,10 +353,104 @@ public class HideSidebarHook {
                 } catch (Throwable ignored) {
                 }
             }
-            return Boolean.TRUE.equals(settingMap.get(enumString));
+            if (!TextUtils.isEmpty(enumString) && Boolean.TRUE.equals(settingMap.get(enumString))) {
+                return true;
+            }
+
+            Object data = null;
+            try {
+                data = XposedHelpers.callMethod(accountItem, "getData");
+            } catch (Throwable ignored) {
+                try {
+                    data = XposedHelpers.getObjectField(accountItem, "data");
+                } catch (Throwable ignored2) {
+                }
+            }
+
+            if (data != null) {
+                String dataClassName = data.getClass().getName();
+                if (dataClassName.contains("CloudShellInfo")) {
+                    if (Boolean.TRUE.equals(settingMap.get("CLOUD_SHELL_CENTER"))) return true;
+                } else if (dataClassName.contains("CreatorMessageInfo")) {
+                    if (Boolean.TRUE.equals(settingMap.get("MUSICIAN")) || Boolean.TRUE.equals(settingMap.get("CREATOR_CENTER"))) return true;
+                } else if (dataClassName.contains("VipItem")) {
+                    if (Boolean.TRUE.equals(settingMap.get("VIP"))) return true;
+                }
+
+                // Drill into Entry -> MainDrawerDynamicItem for dynamic sidebar items
+                try {
+                    Object innerEntry = null;
+                    if (dataClassName.contains("Entry")) {
+                        innerEntry = XposedHelpers.callMethod(data, "getEntry");
+                    } else {
+                        try {
+                            innerEntry = XposedHelpers.callMethod(data, "getEntry");
+                        } catch (Throwable ignored) {}
+                    }
+                    if (innerEntry != null) {
+                        try {
+                            Object rt = XposedHelpers.callMethod(innerEntry, "getResourceType");
+                            if (rt != null) {
+                                String rts = rt.toString().toUpperCase();
+                                if ("TICKET".equals(rts) && Boolean.TRUE.equals(settingMap.get("TICKET"))) return true;
+                                if (("STORE".equals(rts) || "MALL".equals(rts) || "SHOP".equals(rts)) && (Boolean.TRUE.equals(settingMap.get("STORE")) || Boolean.TRUE.equals(settingMap.get("SHOP")))) return true;
+                                if ("GAME".equals(rts) && Boolean.TRUE.equals(settingMap.get("GAME"))) return true;
+                                if (Boolean.TRUE.equals(settingMap.get(rts))) return true;
+                            }
+                        } catch (Throwable ignored) {}
+
+                        StringBuilder sbEntry = new StringBuilder();
+                        extractStrings(innerEntry, sbEntry);
+                        if (sbEntry.length() > 0 && EAPIHelper.shouldHideSidebarString(sbEntry.toString(), settingMap)) {
+                            return true;
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+
+                StringBuilder sb = new StringBuilder();
+                extractStrings(data, sb);
+                if (sb.length() > 0 && EAPIHelper.shouldHideSidebarString(sb.toString(), settingMap)) {
+                    return true;
+                }
+            }
+
+            StringBuilder sbItem = new StringBuilder();
+            extractStrings(accountItem, sbItem);
+            if (sbItem.length() > 0 && EAPIHelper.shouldHideSidebarString(sbItem.toString(), settingMap)) {
+                return true;
+            }
         } catch (Throwable ignored) {
         }
         return false;
+    }
+
+    private void extractStrings(Object obj, StringBuilder sb) {
+        if (obj == null) return;
+        // Try named fields first (name, text, url, description, link, style)
+        for (String fName : new String[]{"name", "text", "url", "description", "link", "style", "redirectUrl"}) {
+            try {
+                Object val = XposedHelpers.getObjectField(obj, fName);
+                if (val instanceof String && !((String) val).isEmpty()) {
+                    sb.append(val).append(" ");
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        // Then try 0-arg String/CharSequence getter methods
+        for (Method m : obj.getClass().getMethods()) {
+            if (m.getParameterTypes().length == 0 && (m.getReturnType() == String.class || m.getReturnType() == CharSequence.class)) {
+                try {
+                    String mName = m.getName();
+                    if ("toString".equals(mName) || "getClass".equals(mName) || "hashCode".equals(mName)) continue;
+                    Object val = m.invoke(obj);
+                    if (val != null && !val.toString().isEmpty()) {
+                        sb.append(val.toString()).append(" ");
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        }
     }
 
     private void removeUselessItem(XC_MethodHook.MethodHookParam param, int versionCode) {

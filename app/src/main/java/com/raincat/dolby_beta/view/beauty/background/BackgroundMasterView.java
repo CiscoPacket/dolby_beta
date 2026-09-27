@@ -28,7 +28,9 @@ public class BackgroundMasterView extends BaseDialogItem {
         setData(true, SettingHelper.getInstance().getSetting(key));
 
         setOnClickListener(view -> {
-            SettingHelper.getInstance().setSetting(key, !checkBox.isChecked());
+            boolean next = !checkBox.isChecked();
+            SettingHelper.getInstance().setSetting(key, next);
+            setData(true, next);
             sendBroadcast(SettingHelper.refresh_setting);
         });
     }
