@@ -20,7 +20,6 @@ import java.util.LinkedHashMap;
 public class SettingHelper {
     public static final String refresh_setting = "β_refresh_setting";
     public static final String proxy_setting = "β_proxy_setting";
-    public static final String background_setting = "β_background_setting";
     public static final String beauty_setting = "β_beauty_setting";
     public static final String sidebar_setting = "β_sidebar_setting";
     public static final String proxy_configuration_setting = "β_proxy_configuration_setting";
@@ -44,9 +43,6 @@ public class SettingHelper {
     public static final String black_title = "本地黑胶";
     public static final String black_sub = "去广告、鲸云音效、个性换肤等（自定义启动图等需要访问网易服务器的设置不可用）";
 
-    public static final String listen_key = "β_listen_key";
-    public static final String listen_title = "解锁一起听蒙面查看权限";
-    public static final String listen_sub = "开启后可直接查看对方信息，无需对方解除蒙面";
 
     public static final String fix_comment_key = "β_fix_comment_key";
     public static final String fix_comment_title = "修复评论区加载失败";
@@ -140,9 +136,6 @@ public class SettingHelper {
     public static final String beauty_key = "β_beauty_key";
     public static final String beauty_title = "美化设置";
 
-    public static final String beauty_night_mode_key = "β_beauty_night_mode_key";
-    public static final String beauty_night_mode_title = "跟随系统切换夜间模式";
-    public static final String beauty_night_mode_sub = "自动根据系统深色模式状态切换夜间/日间模式";
 
     public static final String beauty_tab_hide_key = "β_beauty_tab_hide_key";
     public static final String beauty_tab_hide_title = "精简Tab";
@@ -154,23 +147,12 @@ public class SettingHelper {
     public static final String beauty_rotation_key = "β_beauty_rotation_key";
     public static final String beauty_rotation_title = "播放页专辑图片停止转动";
 
-    public static final String beauty_background_key = "β_beauty_background_key";
-    public static final String beauty_background_title = "自定义播放界面背景";
-
     public static final String beauty_comment_hot_key = "β_beauty_comment_hot_key";
     public static final String beauty_comment_hot_title = "评论区优先显示“最热”内容";
 
     public static final String beauty_sidebar_hide_key = "β_beauty_sidebar_hide_key";
     public static final String beauty_sidebar_hide_title = "精简侧边栏";
     public static final String beauty_sidebar_hide_sub = "部分Item需配合“设置”->“侧边栏管理”开关生效";
-
-    public static final String background_url_key = "β_background_url_key";
-    public static final String background_url_title = "自定义背景 (URL 或本地路径)";
-    public static final String background_url_default = "";
-
-    public static final String background_blur_key = "β_background_blur_key";
-    public static final String background_blur_title = "高斯模糊度(默认透明无模糊)";
-    public static final int background_blur_default = 0 ;
 
     private static SettingHelper instance;
 
@@ -192,16 +174,26 @@ public class SettingHelper {
         }
     }
 
+    /** 动态识别条目清单的存储键 (条目名集合, 重启后恢复对话框清单) */
+    private static final String SIDEBAR_DYNAMIC_ITEMS_KEY = "β_sidebar_dynamic_items";
+
     public void refreshSetting(Context context) {
         sharedPreferences = context.getSharedPreferences("com.netease.cloudmusic.preferences", Context.MODE_MULTI_PROCESS);
         settingMap = new HashMap<>();
+        // 恢复持久化的动态识别条目 (否则每次重启对话框都会缺失动态条目)
+        try {
+            java.util.Set<String> saved = sharedPreferences.getStringSet(SIDEBAR_DYNAMIC_ITEMS_KEY, null);
+            if (saved != null && !saved.isEmpty()) {
+                com.raincat.dolby_beta.model.SidebarEnum.restoreDynamicItems(saved);
+            }
+        } catch (Throwable ignored) {
+        }
 
         settingMap.put(master_key, sharedPreferences.getBoolean(master_key, true));
         settingMap.put(dex_key, sharedPreferences.getBoolean(dex_key, true));
         settingMap.put(warn_key, sharedPreferences.getBoolean(warn_key, true));
         settingMap.put(debug_key, sharedPreferences.getBoolean(debug_key, false));
         settingMap.put(black_key, sharedPreferences.getBoolean(black_key, true));
-        settingMap.put(listen_key, sharedPreferences.getBoolean(listen_key, false));
         settingMap.put(fix_comment_key, sharedPreferences.getBoolean(fix_comment_key, false));
         settingMap.put(update_key, sharedPreferences.getBoolean(update_key, true));
         settingMap.put(sign_key, sharedPreferences.getBoolean(sign_key, false));
@@ -213,13 +205,11 @@ public class SettingHelper {
         settingMap.put(proxy_flac_key, sharedPreferences.getBoolean(proxy_flac_key, false));
         settingMap.put(proxy_gray_key, sharedPreferences.getBoolean(proxy_gray_key, false));
 
-        settingMap.put(beauty_night_mode_key, sharedPreferences.getBoolean(beauty_night_mode_key, false));
         settingMap.put(beauty_tab_hide_key, sharedPreferences.getBoolean(beauty_tab_hide_key, false));
         settingMap.put(beauty_sidebar_hide_key, sharedPreferences.getBoolean(beauty_sidebar_hide_key, false));
         settingMap.put(beauty_rotation_key, sharedPreferences.getBoolean(beauty_rotation_key, false));
         settingMap.put(beauty_black_hide_key, sharedPreferences.getBoolean(beauty_black_hide_key, false));
         settingMap.put(beauty_comment_hot_key, sharedPreferences.getBoolean(beauty_comment_hot_key, false));
-        settingMap.put(beauty_background_key, sharedPreferences.getBoolean(beauty_background_key, false));
 
         if (sidebarSettingMap != null) {
             sidebarSettingMap.clear();
@@ -287,7 +277,6 @@ public class SettingHelper {
         deleteSetting(warn_key);
         deleteSetting(debug_key);
         deleteSetting(black_key);
-        deleteSetting(listen_key);
         deleteSetting(fix_comment_key);
         deleteSetting(update_key);
         deleteSetting(sign_key);
@@ -298,36 +287,47 @@ public class SettingHelper {
         deleteSetting(proxy_flac_key);
         deleteSetting(local_vip_key);
         deleteSetting(proxy_gray_key);
-        deleteSetting(beauty_night_mode_key);
         deleteSetting(beauty_tab_hide_key);
         deleteSetting(beauty_sidebar_hide_key);
         deleteSetting(beauty_rotation_key);
         deleteSetting(beauty_black_hide_key);
         deleteSetting(beauty_comment_hot_key);
-        deleteSetting(beauty_background_key);
     }
 
     public HashMap<String, Boolean> getSidebarSetting(LinkedHashMap<String, String> map) {
         if (sidebarSettingMap == null) {
             sidebarSettingMap = new HashMap<>();
         }
+        // 每次重建缓存 (只增不删的旧缓存会让废弃的静态键如 MESSAGE=true 永远残留,
+        // 把用户已取消勾选的条目继续藏掉)
+        sidebarSettingMap.clear();
         if (map == null) {
             map = com.raincat.dolby_beta.model.SidebarEnum.getSidebarEnum();
         }
         if (map != null) {
+            // 始终以 SP 为准 (SharedPreferences 首次加载后为内存读, 开销可忽略):
+            // hook 进程与设置进程的缓存副本才不会脱节, 勾选/取消勾选都能立刻生效
             for (String key : map.keySet()) {
-                if (!sidebarSettingMap.containsKey(key)) {
-                    sidebarSettingMap.put(key, sharedPreferences.getBoolean(key, false));
-                }
+                sidebarSettingMap.put(key, sharedPreferences.getBoolean(key, false));
             }
         }
         return sidebarSettingMap;
+    }
+
+    /** 持久化动态识别条目清单 (抽屉扫描识别到条目后调用) */
+    public void saveSidebarDynamicItems(java.util.Collection<String> items) {
+        try {
+            if (items == null || items.isEmpty()) return;
+            sharedPreferences.edit().putStringSet(SIDEBAR_DYNAMIC_ITEMS_KEY, new java.util.HashSet<>(items)).apply();
+        } catch (Throwable ignored) {
+        }
     }
 
     public void setSidebarSetting(String key, boolean value) {
         if (sidebarSettingMap != null) {
             sidebarSettingMap.put(key, value);
         }
+        // 同步刷新缓存的副本, 保证 hook 侧下一次读取即为最新勾选状态
         settingMap.put(key, value);
         sharedPreferences.edit().putBoolean(key, value).commit();
         boolean anyEnable = false;
@@ -434,19 +434,5 @@ public class SettingHelper {
     public void setMiguCookie(String cookie) {
         if (!TextUtils.isEmpty(cookie))
             sharedPreferences.edit().putString(SettingHelper.migu_cookie_key, cookie).apply();
-    }
-    public String getPictureUrl() {
-        return sharedPreferences.getString(SettingHelper.background_url_key, SettingHelper.background_url_default);
-    }
-    public void setPictureUrl(String url) {
-        sharedPreferences.edit().putString(SettingHelper.background_url_key, url != null ? url : "").commit();
-    }
-    public int getBackgroundBlur() {
-        return sharedPreferences.getInt(SettingHelper.background_blur_key, SettingHelper.background_blur_default);
-    }
-
-    public void setBackgroundBlur(String blur) {
-        if (!TextUtils.isEmpty(blur))
-            sharedPreferences.edit().putInt(SettingHelper.background_blur_key, Integer.parseInt(blur)).commit();
     }
 }

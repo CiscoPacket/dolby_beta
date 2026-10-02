@@ -34,7 +34,8 @@ public class BeautySidebarHideItem extends BaseDialogItem {
 
     public void initData(LinkedHashMap<String, String> sidebarMap, HashMap<String, Boolean> sidebarSettingMap, String sidebarKey) {
         String name = sidebarMap != null ? sidebarMap.get(sidebarKey) : "";
-        title = (name != null ? name : "") + "(" + sidebarKey + ")";
+        title = (name == null || name.equals(sidebarKey))
+                ? (sidebarKey != null ? sidebarKey : "") : name + "(" + sidebarKey + ")";
         key = sidebarKey;
         boolean isChecked = sidebarSettingMap != null && Boolean.TRUE.equals(sidebarSettingMap.get(sidebarKey));
         setData(true, isChecked);
@@ -44,6 +45,7 @@ public class BeautySidebarHideItem extends BaseDialogItem {
                 sidebarSettingMap.put(sidebarKey, newChecked);
             }
             SettingHelper.getInstance().setSidebarSetting(key, newChecked);
+            com.raincat.dolby_beta.helper.DebugLogger.i("SidebarDialog", "toggle [" + sidebarKey + "] -> " + newChecked);
             setData(true, newChecked);
             sendBroadcast(SettingHelper.refresh_setting);
         });

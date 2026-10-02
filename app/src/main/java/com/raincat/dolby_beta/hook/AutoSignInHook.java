@@ -29,8 +29,6 @@ import static de.robv.android.xposed.XposedHelpers.findClassIfExists;
  */
 
 public class AutoSignInHook {
-    private String methodInitDrawerHeader = "initDrawerHeader";
-    private String valueDrawerUserSignIn = "drawerUserSignIn";
 
     public AutoSignInHook(Context context, int versionCode) {
         //每天0点签到
@@ -67,27 +65,6 @@ public class AutoSignInHook {
             findAndHookMethod(userProfileClass, "isMobileSign", XC_MethodReplacement.returnConstant(true));
         }
 
-        Class<?> mainDrawerClass = findClassIfExists("com.netease.cloudmusic.ui.MainDrawer", context.getClassLoader());
-        if (mainDrawerClass == null) {
-            mainDrawerClass = findClassIfExists("com.netease.cloudmusic.ui.l", context.getClassLoader());
-            methodInitDrawerHeader = "r";
-            valueDrawerUserSignIn = "t";
-        }
-
-        //更改当前签到状态文字
-        if (versionCode < 7003000 && mainDrawerClass != null) {
-            findAndHookMethod(mainDrawerClass, methodInitDrawerHeader, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                    Field drawerUserSignInField = param.thisObject.getClass().getDeclaredField(valueDrawerUserSignIn);
-                    drawerUserSignInField.setAccessible(true);
-                    TextView drawerUserSignIn = (TextView) drawerUserSignInField.get(param.thisObject);
-                    drawerUserSignIn.setText("已签到");
-                    drawerUserSignIn.setEnabled(false);
-                    drawerUserSignIn.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
-                }
-            });
-        }
     }
 
     /**

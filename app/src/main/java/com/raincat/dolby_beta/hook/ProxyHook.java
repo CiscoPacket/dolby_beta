@@ -53,12 +53,11 @@ public class ProxyHook {
             realCallClass = findClassIfExists("okhttp3.RealCall", context.getClassLoader());
             if (realCallClass != null)
                 fieldSSLSocketFactory = "sslSocketFactory";
-            else {
-                realCallClass = findClassIfExists("okhttp3.z", context.getClassLoader());
-                fieldSSLSocketFactory = "o";
-                fieldHttpUrl = "a";
-                fieldProxy = "d";
-            }
+        }
+
+        if (realCallClass == null) {
+            XposedBridge.log("[dolby_beta] ProxyHook: RealCall not found, proxy hook skipped");
+            return;
         }
 
         hookAllConstructors(realCallClass, new XC_MethodHook() {

@@ -17,6 +17,7 @@ import java.util.Random;
 import java.util.regex.Pattern;
 
 import de.robv.android.xposed.XposedBridge;
+import com.raincat.dolby_beta.hook.CommentHotClickHook;
 
 /**
  * <pre>
@@ -29,6 +30,10 @@ import de.robv.android.xposed.XposedBridge;
  */
 
 public class EAPIHelper {
+
+    /** batch 子响应 VIP 标记清理/键名诊断的日志计数 (限次, 避免刷屏) */
+    private static final java.util.concurrent.atomic.AtomicInteger EFFECT_SUB_LOG =
+            new java.util.concurrent.atomic.AtomicInteger(0);
     private static final Gson gson = new Gson();
 
     /**
@@ -199,10 +204,38 @@ public class EAPIHelper {
 
         originalContent = Pattern.compile("\"limitTime\":\\d+").matcher(originalContent).replaceAll("\"limitTime\":0");
         originalContent = Pattern.compile("\"vipType\":\\d+").matcher(originalContent).replaceAll("\"vipType\":0");
+        // 9.6.x 音效/样式条目字段已改名: aeVipType/animVipType/aeLimitTime/animLimitTime
+        originalContent = Pattern.compile("\"aeVipType\":\\d+").matcher(originalContent).replaceAll("\"aeVipType\":0");
+        originalContent = Pattern.compile("\"animVipType\":\\d+").matcher(originalContent).replaceAll("\"animVipType\":0");
+        originalContent = Pattern.compile("\"aeLimitTime\":\\d+").matcher(originalContent).replaceAll("\"aeLimitTime\":999999999999");
+        originalContent = Pattern.compile("\"animLimitTime\":\\d+").matcher(originalContent).replaceAll("\"animLimitTime\":999999999999");
         originalContent = Pattern.compile("\"fee\":\\d+").matcher(originalContent).replaceAll("\"fee\":0");
         originalContent = Pattern.compile("\"payed\":\\d+").matcher(originalContent).replaceAll("\"payed\":1");
         originalContent = Pattern.compile("\"free\":false").matcher(originalContent).replaceAll("\"free\":true");
         return originalContent;
+    }
+
+    /**
+     * 纯正则清除 VIP 标记字段 (不做 JSON 解析, 可安全应用于 RN 数据下发通道)。
+     * 覆盖: limitTime/vipType/aeVipType/animVipType/fee/payed/free
+     */
+    public static String clearVipMarkers(String original) {
+        if (original == null || original.isEmpty()) return original;
+        try {
+            String s = original;
+            s = Pattern.compile("\"limitTime\":\\d+").matcher(s).replaceAll("\"limitTime\":0");
+            s = Pattern.compile("\"vipType\":\\d+").matcher(s).replaceAll("\"vipType\":0");
+            s = Pattern.compile("\"aeVipType\":\\d+").matcher(s).replaceAll("\"aeVipType\":0");
+            s = Pattern.compile("\"animVipType\":\\d+").matcher(s).replaceAll("\"animVipType\":0");
+            s = Pattern.compile("\"aeLimitTime\":\\d+").matcher(s).replaceAll("\"aeLimitTime\":999999999999");
+            s = Pattern.compile("\"animLimitTime\":\\d+").matcher(s).replaceAll("\"animLimitTime\":999999999999");
+            s = Pattern.compile("\"fee\":\\d+").matcher(s).replaceAll("\"fee\":0");
+            s = Pattern.compile("\"payed\":\\d+").matcher(s).replaceAll("\"payed\":1");
+            s = Pattern.compile("\"free\":false").matcher(s).replaceAll("\"free\":true");
+            return s;
+        } catch (Throwable t) {
+            return original;
+        }
     }
 
     private static void unblockSingleEffect(JSONObject item) {
@@ -470,6 +503,14 @@ public class EAPIHelper {
         if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return original;
         try {
             JSONObject jsonObject = new JSONObject(original);
+            // cashier/pre-check (music-vip-thoth) 的判定字段是顶层布尔 data:
+            // 实测服务端对无权益用户返回 data=true (需要进收银台), 翻转为 false = 跳过收银台
+            // (日志实锤: 20:44:43 data=true -> 弹收银台; 翻转后为 false -> 直接使用)
+            Object dataObj = jsonObject.opt("data");
+            if (Boolean.TRUE.equals(dataObj)) {
+                jsonObject.put("data", false);
+                DebugLogger.i("EAPIHelper", "cashier pre-check data=true -> false (paywall bypassed)");
+            }
             jsonObject.put("code", 200);
             jsonObject.put("canUse", true);
             jsonObject.put("auth", true);
@@ -501,6 +542,8 @@ public class EAPIHelper {
             if (obj.has("fee")) obj.put("fee", 0);
             if (obj.has("payed")) obj.put("payed", 1);
             if (obj.has("isVip")) obj.put("isVip", true);
+            if (obj.has("needPay")) obj.put("needPay", false);
+            if (obj.has("showCashier")) obj.put("showCashier", false);
         } catch (Throwable ignored) {}
 
         List<String> keyList = new ArrayList<>();
@@ -691,12 +734,43 @@ public class EAPIHelper {
                     if (snd != null) {
                         jsonObject.put(key, new JSONObject(modifyEffect(snd.toString())));
                     }
+                } else if (key.contains("playermode") || key.contains("playeruimode") || key.contains("player/mode")
+                        || key.contains("vinyl") || key.contains("effect") || key.contains("musiceffect")) {
+                    // 播放器样式/音效条目批量接口: 条目的 vipType/limitTime 标记在此清除
+                    JSONObject eff = jsonObject.optJSONObject(key);
+                    if (eff != null) {
+                        jsonObject.put(key, new JSONObject(modifyEffect(eff.toString())));
+                    }
                 } else if (key.contains("vipauth") || key.contains("auth/query") || key.contains("soundquality")) {
                     JSONObject auth = jsonObject.optJSONObject(key);
                     if (auth != null) {
                         jsonObject.put(key, new JSONObject(modifyVipAuth(auth.toString())));
                     }
+                } else {
+                    // 兜底: 子响应里出现 VIP/限时标记 (vipType/aeVipType/animVipType/limitTime) 一律清除
+                    JSONObject sub = jsonObject.optJSONObject(key);
+                    if (sub != null) {
+                        String subStr = sub.toString();
+                        if (subStr.contains("vipType") || subStr.contains("aeVipType")
+                                || subStr.contains("animVipType") || subStr.contains("limitTime")) {
+                            String cleaned = clearVipMarkers(subStr);
+                            if (!cleaned.equals(subStr)) {
+                                jsonObject.put(key, new JSONObject(cleaned));
+                                if (EFFECT_SUB_LOG.getAndIncrement() < 3) {
+                                    DebugLogger.i("EAPIHelper", "batch sub vip markers cleared: " + key);
+                                }
+                            }
+                        }
+                    }
                 }
+            }
+            if (EFFECT_SUB_LOG.getAndIncrement() < 2) {
+                StringBuilder kb = new StringBuilder();
+                for (String k : keyList) {
+                    if (kb.length() > 0) kb.append(", ");
+                    kb.append(k);
+                }
+                XposedBridge.log("[dolby_beta] batch sub keys: " + kb);
             }
         injectPrivilege(jsonObject);
             return jsonObject.toString();
@@ -778,38 +852,43 @@ public class EAPIHelper {
     }
 
     /**
-     * 评论区优先显示最热：始终将 sortTypeList 中最热排在首位
+     * 评论区优先显示最热：保留官方原生 Tab 排序 [推荐] [最热] [最新]，不物理颠倒 Tab 位置
+     * 每首歌首屏保证响应标识为最热(2)，歌曲内用户主动点击推荐或最新时完全放行
      */
     public static String modifyCommentHot(String original) {
         if (original == null || original.isEmpty()) return original;
+        // 强制窗口外零开销返回, 避免对大响应做无谓的 JSON 解析/序列化
+        if (!CommentHotClickHook.isInForceHotWindow()) return original;
         try {
             JSONObject root = new JSONObject(original);
             JSONObject data = root.optJSONObject("data");
             if (data != null) {
-                // 始终重排 sortTypeList 令“最热”排首位，不论当前 sortType 值
-                JSONArray sortTypeList = data.optJSONArray("sortTypeList");
-                if (sortTypeList != null && sortTypeList.length() > 1) {
-                    JSONObject hotItem = null;
-                    JSONArray newSortTypeList = new JSONArray();
-                    for (int i = 0; i < sortTypeList.length(); i++) {
-                        JSONObject item = sortTypeList.optJSONObject(i);
-                        if (item == null) continue;
-                        if (item.optInt("sortType", -1) == 2 || item.optString("sortTypeName").contains("热")) {
-                            hotItem = item;
-                        }
+                if (CommentHotClickHook.isInForceHotWindow()) {
+                    boolean changed = false;
+                    // 强制设置 currentSortType = 2 (最热)
+                    int curSt = data.optInt("currentSortType", -1);
+                    if (curSt != 2) {
+                        data.put("currentSortType", 2);
+                        changed = true;
                     }
-                    if (hotItem != null) {
-                        newSortTypeList.put(hotItem);
-                        for (int i = 0; i < sortTypeList.length(); i++) {
-                            JSONObject item = sortTypeList.optJSONObject(i);
-                            if (item != null && item != hotItem) {
-                                newSortTypeList.put(item);
-                            }
-                        }
-                        data.put("sortTypeList", newSortTypeList);
+                    // 强制设置 sortType = 2
+                    int st = data.optInt("sortType", -1);
+                    if (st != 2) {
+                        data.put("sortType", 2);
+                        changed = true;
+                    }
+                    // 强制设置 defaultSortType = 2
+                    int defSt = data.optInt("defaultSortType", -1);
+                    if (defSt != 2) {
+                        data.put("defaultSortType", 2);
+                        changed = true;
+                    }
+                    if (changed) {
+                        CommentHotClickHook.markResponseModified();
+                        DebugLogger.i("EAPIHelper", "modifyCommentHot: forced sortType=2 in response (currentSortType=" + curSt + "->2, sortType=" + st + "->2, defaultSortType=" + defSt + "->2)");
+                        return root.toString();
                     }
                 }
-                return root.toString();
             }
         } catch (Throwable t) {
             DebugLogger.e("EAPIHelper", "modifyCommentHot error: " + t.getMessage(), t);
@@ -820,22 +899,27 @@ public class EAPIHelper {
     /**
      * 侧边栏精简：递归过滤侧边栏响应中的项目
      */
-    public static String modifySidebar(String original) {
+    public static String modifySidebar(String original, String path) {
         if (original == null || original.isEmpty()) return original;
         try {
             HashMap<String, Boolean> settingMap = SettingHelper.getInstance().getSidebarSetting(null);
             if (settingMap == null || settingMap.isEmpty()) return original;
             JSONObject root = new JSONObject(original);
-            filterSidebarJsonObject(root, settingMap);
-            return root.toString();
+            List<String> removed = new ArrayList<>();
+            filterSidebarJsonObject(root, settingMap, removed, 0);
+            if (!removed.isEmpty()) {
+                DebugLogger.i("EAPIHelper", "modifySidebar[" + path + "] removed " + removed.size()
+                        + " items: " + removed.subList(0, Math.min(removed.size(), 8)));
+                return root.toString();
+            }
         } catch (Throwable t) {
             DebugLogger.e("EAPIHelper", "modifySidebar error: " + t.getMessage(), t);
         }
         return original;
     }
 
-    private static void filterSidebarJsonObject(JSONObject obj, HashMap<String, Boolean> settingMap) {
-        if (obj == null) return;
+    private static void filterSidebarJsonObject(JSONObject obj, HashMap<String, Boolean> settingMap, List<String> removed, int depth) {
+        if (obj == null || depth > 8) return;
         List<String> keys = new ArrayList<>();
         Iterator<String> it = obj.keys();
         while (it.hasNext()) {
@@ -844,7 +928,7 @@ public class EAPIHelper {
         for (String k : keys) {
             Object val = obj.opt(k);
             if (val instanceof JSONObject) {
-                filterSidebarJsonObject((JSONObject) val, settingMap);
+                filterSidebarJsonObject((JSONObject) val, settingMap, removed, depth + 1);
             } else if (val instanceof JSONArray) {
                 JSONArray arr = (JSONArray) val;
                 JSONArray newArr = new JSONArray();
@@ -853,8 +937,32 @@ public class EAPIHelper {
                     if (item instanceof JSONObject) {
                         JSONObject itemObj = (JSONObject) item;
                         if (!shouldHideSidebarJsonItem(itemObj, settingMap)) {
-                            filterSidebarJsonObject(itemObj, settingMap);
+                            filterSidebarJsonObject(itemObj, settingMap, removed, depth + 1);
                             newArr.put(itemObj);
+                        } else {
+                            StringBuilder desc = new StringBuilder();
+                            collectItemStrings(itemObj, desc, 0);
+                            String d = desc.toString().trim();
+                            removed.add(d.length() > 40 ? d.substring(0, 40) : d);
+                        }
+                    } else if (item instanceof String && ((String) item).trim().startsWith("{")) {
+                        // 侧边栏动态条目 (vipnewcenter contentList 等) 为"JSON 字符串"数组元素,
+                        // 必须解析后按 title/条目名判定, 否则数据级隐藏完全失效
+                        String raw = (String) item;
+                        try {
+                            JSONObject inner = new JSONObject(raw.trim());
+                            if (shouldHideSidebarJsonItem(inner, settingMap)) {
+                                StringBuilder desc = new StringBuilder();
+                                collectItemStrings(inner, desc, 0);
+                                String d = desc.toString().trim();
+                                removed.add(d.length() > 40 ? d.substring(0, 40) : d);
+                            } else {
+                                int before = removed.size();
+                                filterSidebarJsonObject(inner, settingMap, removed, depth + 1);
+                                newArr.put(removed.size() > before ? inner.toString() : raw);
+                            }
+                        } catch (Throwable ignored) {
+                            newArr.put(raw);
                         }
                     } else {
                         newArr.put(item);
@@ -870,51 +978,57 @@ public class EAPIHelper {
 
     private static boolean shouldHideSidebarJsonItem(JSONObject item, HashMap<String, Boolean> settingMap) {
         if (item == null || settingMap == null) return false;
-        String allText = (item.optString("name", "") + " "
-                + item.optString("title", "") + " "
-                + item.optString("text", "") + " "
-                + item.optString("header", "") + " "
-                + item.optString("actionUrl", "") + " "
-                + item.optString("code", "") + " "
-                + item.optString("itemType", "")).toLowerCase();
-        return shouldHideSidebarString(allText, settingMap);
-    }
-
-    public static boolean shouldHideSidebarString(String allText, HashMap<String, Boolean> settingMap) {
-        if (allText == null || settingMap == null) return false;
-        String lower = allText.toLowerCase();
-
-        if (Boolean.TRUE.equals(settingMap.get("STORE")) && (lower.contains("商城") || lower.contains("store"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("GAME")) && (lower.contains("游戏") || lower.contains("game"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("CLOUD_SHELL_CENTER")) && (lower.contains("云贝") || lower.contains("cloudshell"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("TICKET")) && (lower.contains("有票") || lower.contains("ticket"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("MY_ORDER")) && (lower.contains("订单") || lower.contains("order"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("DISCOUNT_COUPON")) && (lower.contains("优惠券") || lower.contains("coupon"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("COLOR_RING")) && (lower.contains("彩铃") || lower.contains("color_ring"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("PRIVATE_CLOUD")) && (lower.contains("云盘") || lower.contains("private_cloud"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("CACHE_WHILE_LISTEN")) && (lower.contains("边听边存") || lower.contains("cache_while_listen"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("VEHICLE_PLAYER")) && (lower.contains("驾驶") || lower.contains("vehicle"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("YOUTH_MODE")) && (lower.contains("青少年") || lower.contains("youth"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("ALARM_CLOCK")) && (lower.contains("闹钟") || lower.contains("alarm"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("CLOCK_PLAY")) && (lower.contains("定时") || lower.contains("clock_play"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("IDENTIFY")) && (lower.contains("听歌识曲") || lower.contains("identify"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("SCAN")) && (lower.contains("扫一扫") || lower.contains("scan"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("FREE")) && (lower.contains("免流量") || lower.contains("free_traffic"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("MUSIC_BLACKLIST")) && (lower.contains("黑名单") || lower.contains("blacklist"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("MY_FRIEND")) && (lower.contains("好友") || lower.contains("my_friend"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("RED_PACKET")) && (lower.contains("红包") || lower.contains("red_packet"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("PROFIT")) && (lower.contains("赞赏") || lower.contains("profit"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("FEEDBACK_HELP")) && (lower.contains("帮助") || lower.contains("feedback"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("SHARE_APP")) && (lower.contains("分享网易云") || lower.contains("share_app"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("ABOUT")) && (lower.contains("关于") || lower.contains("about"))) return true;
-        if ((Boolean.TRUE.equals(settingMap.get("MUSICIAN")) || Boolean.TRUE.equals(settingMap.get("CREATOR_CENTER")) || Boolean.TRUE.equals(settingMap.get("MUSICIAN_CREATOR_CENTER")) || Boolean.TRUE.equals(settingMap.get("MUSICIAN_VIEWER")))
-                && (lower.contains("音乐人") || lower.contains("创作者") || lower.contains("musician") || lower.contains("creator"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("BEAT")) && lower.contains("beat")) return true;
-        if (Boolean.TRUE.equals(settingMap.get("NEARBY")) && (lower.contains("附近") || lower.contains("nearby"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("VIP")) && (lower.contains("我的会员") || lower.contains("黑胶vip") || lower.contains("vipnewcenter"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("MESSAGE")) && (lower.contains("我的消息") || lower.contains("message"))) return true;
-        if (Boolean.TRUE.equals(settingMap.get("THEME")) && (lower.contains("装扮") || lower.contains("theme"))) return true;
-
+        // 1) 标题字段精确匹配优先 (键空间统一为条目名)
+        String title = item.optString("title", "").trim();
+        if (!title.isEmpty() && settingMap.containsKey(title)) {
+            return Boolean.TRUE.equals(settingMap.get(title));
+        }
+        for (String f : new String[]{"title", "name", "subTitle"}) {
+            String v = item.optString(f, "");
+            if (v != null && !v.isEmpty() && Boolean.TRUE.equals(settingMap.get(v.trim()))) return true;
+        }
+        // 2) 9.6+ 侧边栏数据为 link-position 动态体系, 文本位于嵌套结构
+        // (uiInfo.title / action.actionUrl / resourceType / resourceId 等),
+        // 只读顶层扁平字段会全部漏判, 这里递归收集条目子树内所有字符串 (限深)
+        StringBuilder sb = new StringBuilder();
+        collectItemStrings(item, sb, 0);
+        // 2) 兜底: 条目子树内出现任一"已勾选条目名" (键空间统一为条目名)
+        String all = sb.toString();
+        for (HashMap.Entry<String, Boolean> e : settingMap.entrySet()) {
+            if (!Boolean.TRUE.equals(e.getValue())) continue;
+            String key = e.getKey();
+            if (key == null || key.trim().length() < 2) continue;
+            if (all.contains(key.trim())) return true;
+        }
         return false;
     }
+
+    private static void collectItemStrings(JSONObject obj, StringBuilder sb, int depth) {
+        if (obj == null || depth > 4) return;
+        try {
+            java.util.Iterator<String> it = obj.keys();
+            while (it.hasNext()) {
+                String k = it.next();
+                Object v = obj.opt(k);
+                if (v instanceof JSONObject) {
+                    collectItemStrings((JSONObject) v, sb, depth + 1);
+                } else if (v instanceof JSONArray) {
+                    JSONArray arr = (JSONArray) v;
+                    for (int i = 0; i < arr.length(); i++) {
+                        Object e = arr.opt(i);
+                        if (e instanceof JSONObject) {
+                            collectItemStrings((JSONObject) e, sb, depth + 1);
+                        } else if (e instanceof String) {
+                            sb.append((String) e).append(' ');
+                        }
+                    }
+                } else if (v instanceof String) {
+                    sb.append((String) v).append(' ');
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+
 }

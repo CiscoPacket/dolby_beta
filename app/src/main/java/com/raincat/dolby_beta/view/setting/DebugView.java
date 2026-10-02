@@ -1,16 +1,15 @@
 package com.raincat.dolby_beta.view.setting;
 
-import android.app.AlertDialog;
 import android.content.Context;
 import android.util.AttributeSet;
-import android.widget.Toast;
 
 import com.raincat.dolby_beta.helper.DebugLogger;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.view.BaseDialogItem;
 
 /**
- * 调试模式设置项
+ * 详细版调试日志设置项
+ * 支持点击直接打开应用与模块全量实时日志监控窗口，或点击右侧复选框开关
  */
 public class DebugView extends BaseDialogItem {
     public DebugView(Context context, AttributeSet attrs, int defStyle) {
@@ -33,23 +32,25 @@ public class DebugView extends BaseDialogItem {
         updateSub();
         setData(true, SettingHelper.getInstance().getSetting(key));
 
-        setOnClickListener(view -> {
-            SettingHelper.getInstance().setSetting(key, !checkBox.isChecked());
+        // 右侧复选框可单独点击切换记录状态
+        checkBox.setClickable(true);
+        checkBox.setOnClickListener(v -> {
+            boolean isChecked = checkBox.isChecked();
+            SettingHelper.getInstance().setSetting(key, isChecked);
+            DebugLogger.onSettingChanged(context);
             updateSub();
             refresh();
             sendBroadcast(SettingHelper.refresh_setting);
         });
 
+        // 点击文字行整体直接打开全屏实时日志监控
+        setOnClickListener(view -> {
+            LogViewerDialog.show(context);
+        });
+
+        // 长按同样打开日志监控窗口
         setOnLongClickListener(view -> {
-            new AlertDialog.Builder(context, android.R.style.Theme_Material_Light_Dialog_Alert)
-                    .setTitle("调试日志选项")
-                    .setMessage("日志路径：\n" + DebugLogger.getLogFilePath() + "\n\n是否清空当前日志文件？")
-                    .setPositiveButton("清空日志", (dialog, which) -> {
-                        boolean ok = DebugLogger.clearLog();
-                        Toast.makeText(context, ok ? "已清空调试日志" : "日志文件不存在或已被清空", Toast.LENGTH_SHORT).show();
-                    })
-                    .setNegativeButton("取消", null)
-                    .show();
+            LogViewerDialog.show(context);
             return true;
         });
     }
@@ -57,8 +58,9 @@ public class DebugView extends BaseDialogItem {
     private void updateSub() {
         boolean enabled = SettingHelper.getInstance().getSetting(key);
         sub = SettingHelper.debug_sub
-                + "\n状态：" + (enabled ? "已开启" : "已关闭") + "（长按可管理/清空日志）"
-                + "\n路径：" + DebugLogger.getLogFilePath();
+                + "\n状态：" + (enabled ? "已开启详细记录" : "已关闭")
+                + " | 日志大小：" + DebugLogger.getLogFileSize()
+                + "\n【点击此处直接查看应用与模块所有实时日志】";
     }
 
     @Override

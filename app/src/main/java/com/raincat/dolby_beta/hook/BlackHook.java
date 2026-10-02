@@ -3,11 +3,15 @@ package com.raincat.dolby_beta.hook;
 import android.content.Context;
 import android.view.View;
 
+import com.raincat.dolby_beta.helper.ClassHelper;
 import com.raincat.dolby_beta.helper.DebugLogger;
 import com.raincat.dolby_beta.helper.ExtraHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
 
 import org.json.JSONObject;
+
+import java.lang.reflect.Method;
+import java.util.List;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -26,6 +30,8 @@ import static de.robv.android.xposed.XposedHelpers.findClassIfExists;
  */
 
 public class BlackHook {
+    private static final java.util.concurrent.atomic.AtomicInteger AEF_GETTER_LOG =
+            new java.util.concurrent.atomic.AtomicInteger(0);
 
     private static XC_MethodHook returnIfEnabled(final Object constant) {
         return new XC_MethodHook() {
@@ -44,6 +50,76 @@ public class BlackHook {
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
                     param.setResult(null);
+                }
+            }
+        };
+    }
+
+    /** setter 写入即清零: 从数据源头消除 VIP 标记, 不依赖调用方是否读 getter */
+    private static void hookIntSetter(Class<?> c, String setterName, final int forcedValue) {
+        try {
+            findAndHookMethod(c, setterName, int.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
+                        param.args[0] = forcedValue;
+                    }
+                }
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** long setter 写入即清零 (limitTime/beginTime 等限时字段) */
+    private static void hookLongSetter(Class<?> c, String setterName, final long forcedValue) {
+        if (c == null) return;
+        try {
+            findAndHookMethod(c, setterName, long.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
+                        param.args[0] = Long.valueOf(forcedValue);
+                    }
+                }
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** getter 读取侧清零 (long) */
+    private static void hookLongGetter(Class<?> c, String getterName, final long forcedValue) {
+        if (c == null) return;
+        try {
+            findAndHookMethod(c, getterName, returnIfEnabled(Long.valueOf(forcedValue)));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** getter 读取侧清零 (int) */
+    private static void hookIntGetter(Class<?> c, String getterName, final int forcedValue) {
+        if (c == null) return;
+        try {
+            findAndHookMethod(c, getterName, returnIfEnabled(Integer.valueOf(forcedValue)));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** (long, String, int, long) — PlayerAudioEffectConfig 的构造/copy 参数形状 */
+    private static boolean isConfigSignature(Class<?>[] pts) {
+        return pts != null && pts.length == 4 && pts[0] == long.class && pts[1] == String.class
+                && pts[2] == int.class && pts[3] == long.class;
+    }
+
+    /** 把指定下标参数清零 (Integer/Long 自适应) */
+    private static XC_MethodHook zeroArgsHook(final int... idxs) {
+        return new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return;
+                for (int i : idxs) {
+                    if (i < param.args.length && param.args[i] instanceof Number) {
+                        param.args[i] = (param.args[i] instanceof Long) ? Long.valueOf(0L) : Integer.valueOf(0);
+                    }
                 }
             }
         };
@@ -284,6 +360,240 @@ public class BlackHook {
                 } catch (Throwable ignored) {}
             }
         }
+
+        // 2.5 音效/播放器样式数据模型 (AudioEffectBrowseData$Item)
+        // 9.6.x 效果/样式条目的 VIP 标记字段为 aeVipType/animVipType (旧版是 vipType),
+        // RN 音效页/播放器样式页按这些 getter 显示 SVIP 徽标并拦截 —— 直接 hook getter 清零,
+        // 无论数据来自网络响应还是本地缓存均覆盖
+        Class<?> aeItemClass = findClassIfExists("com.netease.cloudmusic.music.base.bridge.member.audioeffect.model.AudioEffectBrowseData$Item", classLoader);
+        if (aeItemClass != null) {
+            try { findAndHookMethod(aeItemClass, "getAeVipType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(aeItemClass, "getAnimVipType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(aeItemClass, "getButtonType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(aeItemClass, "getAeLimitTime", returnIfEnabled(999999999999L)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(aeItemClass, "getAnimLimitTime", returnIfEnabled(999999999999L)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(aeItemClass, "getThemeLimitTime", returnIfEnabled(999999999999L)); } catch (Throwable ignored) {}
+
+            // 桥模型转换点: ModelParse.parseTheme(新模型 Theme) -> 桥模型 Item,
+            // 转换后直接覆盖全部 VIP 标记 (无论映射算出什么都被清), 这是 RN/UI 实际消费的模型
+            try {
+                Class<?> modelParseClass = findClassIfExists(
+                        "com.netease.cloudmusic.music.biz.member.audioeffect.model.ModelParse", classLoader);
+                Class<?> themeClass = findClassIfExists(
+                        "com.netease.cloudmusic.music.biz.member.audioeffect.model.AudioEffectTabData$Theme", classLoader);
+                if (modelParseClass != null && themeClass != null) {
+                    findAndHookMethod(modelParseClass, "parseTheme", themeClass, new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return;
+                            Object item = param.getResult();
+                            if (item == null) return;
+                            try { XposedHelpers.callMethod(item, "setAeVipType", 0); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(item, "setAnimVipType", 0); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(item, "setButtonType", 0); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(item, "setAeLimitTime", 9999999999999L); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(item, "setAnimLimitTime", 9999999999999L); } catch (Throwable ignored) {}
+                            try { XposedHelpers.callMethod(item, "setThemeLimitTime", 9999999999999L); } catch (Throwable ignored) {}
+                            if (AEF_GETTER_LOG.getAndIncrement() < 3) {
+                                DebugLogger.i("BlackHook", "parseTheme result markers cleared: " + item.getClass().getSimpleName());
+                            }
+                        }
+                    });
+                    DebugLogger.i("BlackHook", "parseTheme conversion hook installed");
+                }
+            } catch (Throwable ignored) {}
+            DebugLogger.i("BlackHook", "AudioEffectItem privilege hooks installed");
+        }
+
+        // 2.5c 按钮数据模型 AudioEffectButtonData: 点击效果的判定与按钮文案读取此模型
+        // (buttonType/aeVipType/animVipType); setter 写入即清零 + getter 读取兜底
+        Class<?> buttonDataClass = findClassIfExists(
+                "com.netease.cloudmusic.music.base.bridge.member.audioeffect.model.AudioEffectButtonData", classLoader);
+        if (buttonDataClass != null) {
+            try { findAndHookMethod(buttonDataClass, "getAeVipType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(buttonDataClass, "getAnimVipType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(buttonDataClass, "getButtonType", returnIfEnabled(0)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(buttonDataClass, "getAeLimitTime", returnIfEnabled(999999999999L)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(buttonDataClass, "getAnimLimitTime", returnIfEnabled(999999999999L)); } catch (Throwable ignored) {}
+            try { findAndHookMethod(buttonDataClass, "getThemeLimitTime", returnIfEnabled(999999999999L)); } catch (Throwable ignored) {}
+            hookIntSetter(buttonDataClass, "setAeVipType", 0);
+            hookIntSetter(buttonDataClass, "setAnimVipType", 0);
+            hookIntSetter(buttonDataClass, "setButtonType", 0);
+            DebugLogger.i("BlackHook", "AudioEffectButtonData hooks installed");
+        }
+
+        // 2.7 音效/音质"是否需要VIP"判定 —— 双层解锁 (全部 DexKit 动态特征匹配)
+        //
+        // 第一层 (最上游, 反编译全链路实锤):
+        //   ACTION_AudioActionView_isNeedVip → sb1.k.b2() → td1.k.a.f() → td1.b.m()
+        //   td1.i.b(MusicAudioQuality) 按音质类型分发到 5 个判定方法:
+        //   DOLBY→td1.b.m() / VIVID_EFFECT→td1.p.l() / IMMERSE_EFFECT→td1.d.l() /
+        //   JY_EFFECT→td1.e.l() / JY_MASTER→td1.f.l()
+        //   判定语义: 返回 true = 需要VIP (调用方把 true 的音质加入锁定列表)。
+        //   结构特征(跨版本稳定): 无参返回 boolean + 方法体引用埋点串 "memberBenefitsInfo==null",
+        //   一次命中全部 5 个判定方法, 恒返回 false 即解锁所有音效/音质。
+        ClassHelper.runAfterResolve(() -> {
+            try {
+                List<Method> verdicts = ClassHelper.AudioEffectVip.getVerdictMethods(context);
+                int hooked = 0;
+                for (Method v : verdicts) {
+                    try {
+                        XposedBridge.hookMethod(v, new XC_MethodHook() {
+                            @Override
+                            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                                if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return;
+                                if (Boolean.TRUE.equals(param.getResult())) {
+                                    param.setResult(Boolean.FALSE);
+                                    if (AEF_GETTER_LOG.getAndIncrement() < 8) {
+                                        DebugLogger.i("BlackHook", "audio vip verdict(" + param.method.getDeclaringClass().getSimpleName()
+                                                + "." + param.method.getName() + ") -> false (unlocked)");
+                                    }
+                                }
+                            }
+                        });
+                        hooked++;
+                    } catch (Throwable t) {
+                        DebugLogger.e("BlackHook", "verdict hook failed: " + v, t);
+                    }
+                }
+                DebugLogger.i("BlackHook", "audio vip verdicts hooked: " + hooked + "/" + verdicts.size());
+            } catch (Throwable t) {
+                DebugLogger.e("BlackHook", "audio vip verdict hook error: " + t.getMessage(), t);
+            }
+
+            // 第二层 (总线兜底): 拦截模块总线同步派发, 覆盖 UI 直接走 ACTION 串的路径。
+            // 总线类由 ClassHelper.ModuleBus 结构特征匹配 (静态 (String,Object[])->Object 与 (String,Object[])->void 并存)
+            try {
+                Method busDispatch = ClassHelper.ModuleBus.getDispatchMethod(context);
+                if (busDispatch != null) {
+                    XposedBridge.hookMethod(busDispatch, new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            if (!SettingHelper.getInstance().isEnable(SettingHelper.black_key)) return;
+                            if (param.args == null || param.args.length < 1 || !(param.args[0] instanceof String)) return;
+                            String action = (String) param.args[0];
+                            // 语义化通用拦截 (ACTION 名跨版本稳定, 不依赖混淆名):
+                            // 布尔类 VIP/限时判定 -> false; VIP 类型枚举/等级 -> 0
+                            if (action.contains("isNeedVip") || action.contains("LimitFree")
+                                    || action.contains("isLimitOver") || action.contains("isVipLimit")) {
+                                if (Boolean.TRUE.equals(param.getResult())) {
+                                    param.setResult(Boolean.FALSE);
+                                    if (AEF_GETTER_LOG.getAndIncrement() < 8) {
+                                        DebugLogger.i("BlackHook", "bus " + action + " -> false (unlocked)");
+                                    }
+                                }
+                            } else if (action.contains("VipType") && param.getResult() instanceof Number
+                                    && ((Number) param.getResult()).intValue() != 0) {
+                                if (param.getResult() instanceof Long) param.setResult(Long.valueOf(0L));
+                                else if (param.getResult() instanceof Integer) param.setResult(Integer.valueOf(0));
+                                else param.setResult(0);
+                                if (AEF_GETTER_LOG.getAndIncrement() < 8) {
+                                    DebugLogger.i("BlackHook", "bus " + action + " -> 0 (vip type cleared)");
+                                }
+                            }
+                        }
+                    });
+                    DebugLogger.i("BlackHook", "module bus hook installed: " + busDispatch.getDeclaringClass().getName()
+                            + "." + busDispatch.getName());
+                } else {
+                    DebugLogger.e("BlackHook", "module bus not found (degrade to verdict hooks)", null);
+                }
+            } catch (Throwable t) {
+                DebugLogger.e("BlackHook", "module bus hook failed: " + t.getMessage(), t);
+            }
+        });
+
+        // 2.6 9.6.x 新版音效/播放器样式模型 (biz.member.audioeffect)
+        // 条目可用性由 limitTime/beginTime 标记; 数据来自本地缓存, 网络层无法覆盖,
+        // 直接 hook 模型 getter 使其恒为可用 (getLimitTime/getBeginTime -> 0)
+        Class<?> tabDataClass = findClassIfExists(
+                "com.netease.cloudmusic.music.biz.member.audioeffect.model.AudioEffectTabData", classLoader);
+        if (tabDataClass != null) {
+            String prefix = "com.netease.cloudmusic.music.biz.member.audioeffect.model.AudioEffectTabData$";
+            String[] innerClasses = {"Theme", "TwinkleEffectItem", "AudioBean", "AnimationBean", "AudioEffectListItem"};
+            int hooked = 0;
+            for (String inner : innerClasses) {
+                final Class<?> c = findClassIfExists(prefix + inner, classLoader);
+                if (c == null) continue;
+                try {
+                    findAndHookMethod(c, "getLimitTime", new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
+                                Object orig = param.getResult();
+                                if (AEF_GETTER_LOG.getAndIncrement() < 6) {
+                                    DebugLogger.i("BlackHook", "getLimitTime called: " + c.getSimpleName() + " orig=" + orig);
+                                }
+                                param.setResult(0L);
+                            }
+                        }
+                    });
+                    hooked++;
+                } catch (Throwable ignored) {}
+                try {
+                    findAndHookMethod(c, "getBeginTime", returnIfEnabled(0L));
+                    hooked++;
+                } catch (Throwable ignored) {}
+                // 写侧清零: JSON 解析器 (gc1.c$c) 经 setter 写入模型, 从数据源头消除限时标记,
+                // 无论下游读取 getter 还是直接读字段/转 Map 都已是可用状态
+                hookLongSetter(c, "setLimitTime", 0L);
+                hookLongSetter(c, "setBeginTime", 0L);
+                hooked++;
+            }
+            Class<?> metaClass = findClassIfExists(
+                    "com.netease.cloudmusic.music.biz.member.audioeffect.model.UpdateAudioEffectMeta", classLoader);
+            if (metaClass != null) {
+                try {
+                    findAndHookMethod(metaClass, "getFreeEndTime", returnIfEnabled(9999999999999L));
+                    hooked++;
+                } catch (Throwable ignored) {}
+                try {
+                    findAndHookMethod(metaClass, "getFreeBeginTime", returnIfEnabled("0"));
+                    hooked++;
+                } catch (Throwable ignored) {}
+            }
+            DebugLogger.i("BlackHook", "new audioeffect model getters hooked=" + hooked);
+        }
+
+        // 2.6b 播放器样式/音效配置模型 PlayerAudioEffectConfig (module.playeruimode, Moshi 解析)
+        // 字段: id/name/vipType(int)/limitTime(long) —— 样式与音效条目的 VIP 标记与限时来源。
+        // 类由 DexKit 结构特征匹配 (long id + String name + int vipType + long limitTime + getVipType/getLimitTime)
+        ClassHelper.runAfterResolve(() -> {
+            try {
+                Class<?> paec = ClassHelper.PlayerAudioEffectConfig.getClazz(context);
+                if (paec == null) {
+                    DebugLogger.e("BlackHook", "PlayerAudioEffectConfig not found", null);
+                    return;
+                }
+                hookIntGetter(paec, "getVipType", 0);
+                hookLongGetter(paec, "getLimitTime", 0L);
+                hookIntSetter(paec, "setVipType", 0);
+                hookLongSetter(paec, "setLimitTime", 0L);
+                int ctors = 0;
+                // 构造器/拷贝方法 (Moshi 适配器与 Kotlin copy 都经此写入): (long, String, int, long) -> 后两参清零
+                for (java.lang.reflect.Constructor<?> ctor : paec.getDeclaredConstructors()) {
+                    if (isConfigSignature(ctor.getParameterTypes())) {
+                        try {
+                            XposedBridge.hookMethod(ctor, zeroArgsHook(2, 3));
+                            ctors++;
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+                for (Method m : paec.getDeclaredMethods()) {
+                    if (m.getReturnType() == paec && isConfigSignature(m.getParameterTypes())) {
+                        try {
+                            XposedBridge.hookMethod(m, zeroArgsHook(2, 3));
+                            ctors++;
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+                DebugLogger.i("BlackHook", "PlayerAudioEffectConfig hooked (" + paec.getName() + ", writes=" + ctors + ")");
+            } catch (Throwable t) {
+                DebugLogger.e("BlackHook", "PlayerAudioEffectConfig hook error: " + t.getMessage(), t);
+            }
+        });
 
         // 3. RedPlus (com.netease.cloudmusic.meta.virtual.RedPlus)
         if (redPlusClass != null) {

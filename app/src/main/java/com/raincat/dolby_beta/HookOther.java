@@ -26,7 +26,6 @@ import com.raincat.dolby_beta.hook.HideTabHook;
 import com.raincat.dolby_beta.hook.InternalDialogHook;
 import com.raincat.dolby_beta.hook.MagiskFixHook;
 import com.raincat.dolby_beta.hook.AdExtraHook;
-import com.raincat.dolby_beta.hook.NightModeHook;
 import com.raincat.dolby_beta.hook.PlayerActivityHook;
 import com.raincat.dolby_beta.hook.ProxyHook;
 import com.raincat.dolby_beta.hook.SettingHook;
@@ -62,8 +61,6 @@ public class HookOther {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         final Context context = (Context) param.thisObject;
-                        // 初始化调试日志系统与崩溃捕获
-                        DebugLogger.init(context);
                         if(PACKAGE_NAME.equals("com.netease.cloudmusic.lite"))
                         {
                             versionCode = 140;
@@ -73,8 +70,10 @@ public class HookOther {
 
                         //初始化仓库
                         ExtraHelper.init(context);
-                        //初始化设置
+                        //初始化设置 (必须在 DebugLogger.init 之前, 否则调试开关读取不到, 冷启动日志收集不会启动)
                         SettingHelper.init(context);
+                        //初始化调试日志系统与崩溃捕获
+                        DebugLogger.init(context);
                         //初始化ClassHelper
                         ClassHelper.init(context, versionCode);
 
@@ -103,21 +102,24 @@ public class HookOther {
                             //去掉内测与听歌识曲弹窗
                             new InternalDialogHook(context, versionCode);
                             //美化与界面定制（不依赖DexKit，主线程同步立即注册，避免时机过晚导致不生效）
-                            new NightModeHook(context, versionCode);
-                            new HideTabHook(context, versionCode);
-                            new HideSidebarHook(context, versionCode);
-                            new PlayerActivityHook(context, versionCode);
-                            new CommentHotClickHook(context);
-                            new AdExtraHook();
+                            //逐个隔离异常: 任何一个 hook 构造失败都不能杀死后续注册 (尤其 EAPIHook 所依赖的 getCacheClassList)
+                            safeHook("HideTabHook", () -> new HideTabHook(context, versionCode));
+                            safeHook("HideSidebarHook", () -> new HideSidebarHook(context, versionCode));
+                            safeHook("PlayerActivityHook", () -> new PlayerActivityHook(context, versionCode));
+                            safeHook("CommentHotClickHook", () -> new CommentHotClickHook(context));
+                            safeHook("AdExtraHook", () -> new AdExtraHook());
 
                             ClassHelper.getCacheClassList(context, versionCode, () -> {
                                 //获取账号信息
-                                new UserProfileHook(context);
+                                safeHook("UserProfileHook", () -> new UserProfileHook(context));
                                 //网络访问
-                                new EAPIHook(context);
+                                safeHook("EAPIHook", () -> new EAPIHook(context));
                                 //下载MD5校验
-                                new DownloadMD5Hook(context);
-                                new CdnHook(context, versionCode);
+                                safeHook("DownloadMD5Hook", () -> new DownloadMD5Hook(context));
+                                safeHook("CdnHook", () -> new CdnHook(context, versionCode));
+                                safeHook("CommentHotClickDexKit", () -> CommentHotClickHook.initDexKitHooks(context));
+                                //精简Tab 的 DexKit 结构特征兜底 (后台线程执行, 避免主线程 DexKit 扫描卡顿)
+                                safeHook("HideTabDexKitFallback", () -> HideTabHook.onCacheClassListReady(context));
 
                                 mainProcessInit = true;
                                 if (mainProcessInit && playProcessInit)
@@ -170,6 +172,18 @@ public class HookOther {
                         }
                     }
                 });
+    }
+
+    /**
+     * 单个 hook 注册的异常隔离: 一个 hook 失败不影响其余功能与后续初始化
+     */
+    private static void safeHook(String name, Runnable registration) {
+        try {
+            registration.run();
+        } catch (Throwable t) {
+            DebugLogger.e("HookOther", name + " init error: " + t.getMessage(), t);
+            XposedBridge.log("[dolby_beta] " + name + " init error: " + t.getMessage());
+        }
     }
 
     private void deleteAdAndTinker() {

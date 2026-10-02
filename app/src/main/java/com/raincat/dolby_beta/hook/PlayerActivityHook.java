@@ -1,39 +1,16 @@
 package com.raincat.dolby_beta.hook;
 
 import android.app.Activity;
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.text.TextUtils;
-import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ImageSwitcher;
 import android.widget.ImageView;
-import android.widget.RelativeLayout;
-import android.widget.ViewFlipper;
 
 import com.raincat.dolby_beta.helper.ClassHelper;
-import com.raincat.dolby_beta.helper.FastBlur;
 import com.raincat.dolby_beta.helper.SettingHelper;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.lang.ref.WeakReference;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,23 +21,14 @@ import de.robv.android.xposed.XposedHelpers;
 /**
  * <pre>
  *     author : RainCat & Cisco
- *     desc   : 播放页hook (黑胶停转、隐藏K歌/音街、隐藏唱片黑胶、自定义本地/网络背景及高斯模糊)
- *     version: 3.0
+ *     desc   : 播放页hook (黑胶停转、隐藏唱片黑胶)
+ *     version: 4.0
  * </pre>
  */
 public class PlayerActivityHook {
-    private static WeakReference<Activity> sLastPlayerActivity;
-    private static WeakReference<Object> sLastBgObject;
-    private static WeakReference<ImageSwitcher> sLastImageSwitcher;
-    private static WeakReference<View> sLastBgView;
-    private static WeakReference<Context> sLastContext;
-    private static WeakReference<View> sLastChildBgView;
-    private static String sCachedKey = null;
-    private static Bitmap sCachedBitmap = null;
-    private static BroadcastReceiver sBgSettingReceiver = null;
 
     public PlayerActivityHook(final Context context, final int versionCode) {
-        // 1. 播放界面 (PlayerActivity)
+        // 1. 播放界面 (PlayerActivity) - 唱片黑胶隐藏守护
         Class<?> playerActivityClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.activity.PlayerActivity", context.getClassLoader());
         if (playerActivityClass != null) {
             XposedHelpers.findAndHookMethod(playerActivityClass, "onCreate", Bundle.class, new XC_MethodHook() {
@@ -69,65 +37,12 @@ public class PlayerActivityHook {
                     super.afterHookedMethod(param);
                     if (param.thisObject instanceof Activity) {
                         final Activity activity = (Activity) param.thisObject;
-                        sLastPlayerActivity = new WeakReference<>(activity);
-                        sLastContext = new WeakReference<>(activity);
-                        setupPlayerBackground(activity);
-                        if (sBgSettingReceiver == null) {
-                            sBgSettingReceiver = new BroadcastReceiver() {
-                                @Override
-                                public void onReceive(Context ctx, Intent intent) {
-                                    if (intent != null && SettingHelper.refresh_setting.equals(intent.getAction())) {
-                                        Activity act = sLastPlayerActivity != null ? sLastPlayerActivity.get() : null;
-                                        if (act != null) {
-                                            SettingHelper.getInstance().refreshSetting(act);
-                                            sCachedKey = null;
-                                            sCachedBitmap = null;
-                                            setupPlayerBackground(act);
-                                            reloadBackground();
-                                        }
-                                    }
-                                }
-                            };
-                            try {
-                                LocalBroadcastManager.getInstance(activity).registerReceiver(sBgSettingReceiver, new IntentFilter(SettingHelper.refresh_setting));
-                            } catch (Throwable ignored) {
-                            }
-                            try {
-                                activity.registerReceiver(sBgSettingReceiver, new IntentFilter(SettingHelper.refresh_setting));
-                            } catch (Throwable ignored) {
-                            }
-                        }
                         final View decorView = activity.getWindow().getDecorView();
-                        decorView.post(() -> {
-                            applyBlackHideFromDecorView(decorView);
-                        });
-                        decorView.postDelayed(() -> {
-                            applyBlackHideFromDecorView(decorView);
-                        }, 500);
+                        decorView.post(() -> applyBlackHideFromDecorView(decorView));
+                        decorView.postDelayed(() -> applyBlackHideFromDecorView(decorView), 500);
                     }
                 }
             });
-
-            try {
-                XposedHelpers.findAndHookMethod(playerActivityClass, "onDestroy", new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        if (sBgSettingReceiver != null && param.thisObject instanceof Activity) {
-                            Activity activity = (Activity) param.thisObject;
-                            try {
-                                LocalBroadcastManager.getInstance(activity).unregisterReceiver(sBgSettingReceiver);
-                            } catch (Throwable ignored) {
-                            }
-                            try {
-                                activity.unregisterReceiver(sBgSettingReceiver);
-                            } catch (Throwable ignored) {
-                            }
-                            sBgSettingReceiver = null;
-                        }
-                    }
-                });
-            } catch (Throwable ignored) {
-            }
 
             try {
                 XposedHelpers.findAndHookMethod(playerActivityClass, "onResume", new XC_MethodHook() {
@@ -136,53 +51,20 @@ public class PlayerActivityHook {
                         super.afterHookedMethod(param);
                         if (param.thisObject instanceof Activity) {
                             Activity activity = (Activity) param.thisObject;
-                            sLastPlayerActivity = new WeakReference<>(activity);
-                            sLastContext = new WeakReference<>(activity);
-                            setupPlayerBackground(activity);
                             View decorView = activity.getWindow().getDecorView();
                             applyBlackHideFromDecorView(decorView);
                         }
-                        reloadBackground();
                     }
                 });
             } catch (Throwable ignored) {
             }
-
-            // Hook PlayerActivity.of(Drawable, ...) - 9.6+ 设置播放页背景与主色调的核心入口
-            for (Method m : playerActivityClass.getDeclaredMethods()) {
-                if ("of".equals(m.getName()) && m.getParameterTypes().length == 4 && m.getParameterTypes()[0] == Drawable.class) {
-                    try {
-                        XposedBridge.hookMethod(m, new XC_MethodHook() {
-                            @Override
-                            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key))
-                                    return;
-                                Activity act = (Activity) param.thisObject;
-                                Bitmap blurred = getCustomBlurredBitmap(act);
-                                if (blurred != null) {
-                                    param.args[0] = new BitmapDrawable(act.getResources(), blurred);
-                                }
-                            }
-
-                            @Override
-                            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key))
-                                    return;
-                                Activity act = (Activity) param.thisObject;
-                                Bitmap blurred = getCustomBlurredBitmap(act);
-                                if (blurred != null) {
-                                    applyToAllBgViews(blurred, act);
-                                }
-                            }
-                        });
-                    } catch (Throwable ignored) {
-                    }
-                }
-            }
         }
 
-        // 2. 黑胶唱片 (PlayerDiscViewFlipper & PlayerDSLVinylView) 自动隐藏唱片圈并放大专辑封面
-        Class<?> discFlipperClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.PlayerDiscViewFlipper", context.getClassLoader());
+        // 2. 黑胶唱片 (PlayerDiscViewFlipper & PlayerDSLVinylView) 隐藏唱片圈并保留专辑封面
+        Class<?> discFlipperClass = ClassHelper.PlayerDiscViewFlipper.getClazz(context);
+        if (discFlipperClass == null) {
+            discFlipperClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.PlayerDiscViewFlipper", context.getClassLoader());
+        }
         if (discFlipperClass != null) {
             try {
                 XposedHelpers.findAndHookMethod(discFlipperClass, "onLayout", boolean.class, int.class, int.class, int.class, int.class, new XC_MethodHook() {
@@ -257,25 +139,33 @@ public class PlayerActivityHook {
             }
         };
 
-        String[] rotationClasses = new String[]{
+        List<Class<?>> rotationClassList = new ArrayList<>();
+        Class<?> dynamicRotationClass = ClassHelper.RotationRelativeLayout.getClazz(context);
+        if (dynamicRotationClass != null) {
+            rotationClassList.add(dynamicRotationClass);
+        }
+        for (String rName : new String[]{
                 "com.netease.cloudmusic.ui.RotationRelativeLayout",
                 "com.netease.cloudmusic.module.state.RotationRelativeLayout"
-        };
-        for (String rName : rotationClasses) {
+        }) {
             Class<?> rCls = XposedHelpers.findClassIfExists(rName, context.getClassLoader());
-            if (rCls != null) {
-                try {
-                    XposedHelpers.findAndHookMethod(rCls, "prepareAnimation", stopRotationHook);
-                } catch (Throwable ignored) {
-                }
-                try {
-                    XposedHelpers.findAndHookMethod(rCls, "start", stopRotationHook);
-                } catch (Throwable ignored) {
-                }
-                try {
-                    XposedHelpers.findAndHookMethod(rCls, "setRotation", float.class, zeroRotationHook);
-                } catch (Throwable ignored) {
-                }
+            if (rCls != null && !rotationClassList.contains(rCls)) {
+                rotationClassList.add(rCls);
+            }
+        }
+
+        for (Class<?> rCls : rotationClassList) {
+            try {
+                XposedHelpers.findAndHookMethod(rCls, "prepareAnimation", stopRotationHook);
+            } catch (Throwable ignored) {
+            }
+            try {
+                XposedHelpers.findAndHookMethod(rCls, "start", stopRotationHook);
+            } catch (Throwable ignored) {
+            }
+            try {
+                XposedHelpers.findAndHookMethod(rCls, "setRotation", float.class, zeroRotationHook);
+            } catch (Throwable ignored) {
             }
         }
 
@@ -313,544 +203,6 @@ public class PlayerActivityHook {
                 }
             }
         }
-
-        // 4. 自定义播放界面背景 (PlayerBackgroundImage)
-        Class<?> playerBgClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.PlayerBackgroundImage", context.getClassLoader());
-        if (playerBgClass != null) {
-            // 构造方法中保存引用
-            XposedBridge.hookAllConstructors(playerBgClass, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                    sLastBgObject = new WeakReference<>(param.thisObject);
-                    if (param.args.length > 0 && param.args[0] instanceof Context) {
-                        sLastContext = new WeakReference<>((Context) param.args[0]);
-                    }
-                    if (param.args.length > 1 && param.args[1] instanceof ImageSwitcher) {
-                        sLastImageSwitcher = new WeakReference<>((ImageSwitcher) param.args[1]);
-                    }
-                }
-            });
-
-            // 歌曲设置封面 Drawable 时替换为自定义高斯模糊图
-            try {
-                XposedHelpers.findAndHookMethod(playerBgClass, "setImageDrawable", Drawable.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        sLastBgObject = new WeakReference<>(param.thisObject);
-                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-                            return;
-                        }
-                        String customPath = SettingHelper.getInstance().getPictureUrl();
-                        if (TextUtils.isEmpty(customPath)) {
-                            return;
-                        }
-                        Context ctx = getContextFromBgObject(param.thisObject);
-                        if (ctx == null) ctx = context;
-
-                        String cleanPath = customPath.startsWith("file://") ? customPath.substring(7) : customPath;
-                        if (cleanPath.startsWith("/")) {
-                            File file = new File(cleanPath);
-                            if (file.exists() && file.isFile() && file.length() > 0) {
-                                int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
-                                Bitmap blurred = getOrLoadBlurredBitmap(file, blurRadius, ctx);
-                                if (blurred != null) {
-                                    param.args[0] = new BitmapDrawable(ctx.getResources(), blurred);
-                                }
-                            }
-                        }
-                    }
-                });
-            } catch (Throwable ignored) {
-            }
-
-            // 拦截网络封面模糊加载 setBlurCover(...)
-            XC_MethodHook blurCoverHook = new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                    sLastBgObject = new WeakReference<>(param.thisObject);
-                    if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-                        return;
-                    }
-                    String customPath = SettingHelper.getInstance().getPictureUrl();
-                    if (TextUtils.isEmpty(customPath)) {
-                        return;
-                    }
-                    Context ctx = getContextFromBgObject(param.thisObject);
-                    if (ctx == null) ctx = context;
-
-                    String cleanPath = customPath.startsWith("file://") ? customPath.substring(7) : customPath;
-                    if (cleanPath.startsWith("/")) {
-                        File file = new File(cleanPath);
-                        if (file.exists() && file.isFile() && file.length() > 0) {
-                            int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
-                            Bitmap blurred = getOrLoadBlurredBitmap(file, blurRadius, ctx);
-                            if (blurred != null) {
-                                BitmapDrawable d = new BitmapDrawable(ctx.getResources(), blurred);
-                                XposedHelpers.callMethod(param.thisObject, "setImageDrawable", d);
-                                param.setResult(null); // 拦截后续网络加载
-                                return;
-                            }
-                        }
-                    } else if (customPath.startsWith("http://") || customPath.startsWith("https://")) {
-                        if (param.args.length > 0 && param.args[0] instanceof String) {
-                            param.args[0] = customPath;
-                        }
-                        if (param.args.length > 1 && param.args[1] instanceof String) {
-                            param.args[1] = customPath;
-                        }
-                    }
-                }
-            };
-
-            for (Method m : playerBgClass.getDeclaredMethods()) {
-                if ("setBlurCover".equals(m.getName())) {
-                    try {
-                        XposedBridge.hookMethod(m, blurCoverHook);
-                    } catch (Throwable ignored) {
-                    }
-                }
-            }
-        }
-
-        // 4.1 9.6+ 播放页核心背景承载控件 (PlayerPageImageView & PlayerBackgroundImage extends ImageView)
-        XC_MethodHook ivDrawableHook = new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-                    return;
-                }
-                Object obj = param.thisObject;
-                if (obj == null) return;
-                String name = obj.getClass().getName();
-                if (name.contains("PlayerPageImageView") || name.contains("PlayerBackgroundImage")) {
-                    View v = (View) obj;
-                    Bitmap blurred = getCustomBlurredBitmap(v.getContext());
-                    if (blurred != null) {
-                        param.args[0] = new BitmapDrawable(v.getResources(), blurred);
-                    }
-                }
-            }
-        };
-        try {
-            XposedHelpers.findAndHookMethod(ImageView.class, "setImageDrawable", Drawable.class, ivDrawableHook);
-        } catch (Throwable ignored) {
-        }
-
-        XC_MethodHook ivBitmapHook = new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-                    return;
-                }
-                Object obj = param.thisObject;
-                if (obj == null) return;
-                String name = obj.getClass().getName();
-                if (name.contains("PlayerPageImageView") || name.contains("PlayerBackgroundImage")) {
-                    View v = (View) obj;
-                    Bitmap blurred = getCustomBlurredBitmap(v.getContext());
-                    if (blurred != null) {
-                        param.args[0] = blurred;
-                    }
-                }
-            }
-        };
-        try {
-            XposedHelpers.findAndHookMethod(ImageView.class, "setImageBitmap", Bitmap.class, ivBitmapHook);
-        } catch (Throwable ignored) {
-        }
-
-        // 兼容旧版混淆类
-        Class<?> rClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.r", context.getClassLoader());
-        if (rClass != null) {
-            try {
-                XposedHelpers.findAndHookMethod(rClass, "a", String.class, String.class, int.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-                            return;
-                        }
-                        String customPath = SettingHelper.getInstance().getPictureUrl();
-                        if (TextUtils.isEmpty(customPath)) {
-                            return;
-                        }
-                        if (customPath.startsWith("http://") || customPath.startsWith("https://")) {
-                            param.args[0] = customPath;
-                            param.args[1] = customPath;
-                        }
-                    }
-                });
-            } catch (Throwable ignored) {
-            }
-        }
-
-        // 5. 9.x+ 播放页默认渐变图层 (PlayerChildBackgroundView) 抑制渐变绘制覆盖
-        Class<?> childBgClass = ClassHelper.PlayerChildBackground.getClazz(context);
-        if (childBgClass == null) {
-            childBgClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.ui.PlayerChildBackgroundView", context.getClassLoader());
-        }
-        if (childBgClass != null) {
-            try {
-                XposedHelpers.findAndHookMethod(childBgClass, "onDraw", android.graphics.Canvas.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        if (param.thisObject instanceof View) {
-                            sLastChildBgView = new WeakReference<>((View) param.thisObject);
-                        }
-                        if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)
-                                && !TextUtils.isEmpty(SettingHelper.getInstance().getPictureUrl())) {
-                            param.setResult(null); // 抑制渐变覆盖层绘制
-                        }
-                    }
-                });
-            } catch (Throwable ignored) {
-            }
-        }
-
-        // 6. 9.x+ 播放页官方自定义背景控件 (PlayerCustomBackgroundView)
-        Class<?> customBgClass = ClassHelper.PlayerCustomBackground.getClazz(context);
-        if (customBgClass == null) {
-            customBgClass = XposedHelpers.findClassIfExists("com.netease.cloudmusic.module.playerstyle.PlayerCustomBackgroundView", context.getClassLoader());
-        }
-        if (customBgClass != null) {
-            XC_MethodHook customBgHook = new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                    if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-                        // 模块已由独立图层接管自定义背景，直接屏蔽官方控件避免 UCrop 崩溃
-                        param.setResult(false);
-                        if (param.thisObject instanceof View) {
-                            ((View) param.thisObject).setVisibility(View.GONE);
-                        }
-                    } else {
-                        // 未开启时，如果入参 url 为空或非法导致 Uri.parse(url).getScheme() == null，也拦截返回 false 防止崩溃
-                        if (param.args != null && param.args.length > 0) {
-                            Object arg = param.args[0];
-                            if (arg == null || TextUtils.isEmpty(arg.toString()) || !arg.toString().contains("://")) {
-                                param.setResult(false);
-                            }
-                        }
-                    }
-                }
-            };
-            for (Method m : customBgClass.getDeclaredMethods()) {
-                String mn = m.getName();
-                if ("s".equals(mn) || "t".equals(mn)) {
-                    try {
-                        XposedBridge.hookMethod(m, customBgHook);
-                    } catch (Throwable ignored) {
-                    }
-                }
-            }
-        }
-
-        // 7. UCrop BitmapWorkerTask 异常防护，彻底拦截 IllegalArgumentException: Invalid Uri schemenull
-        Class<?> workerTaskClass = ClassHelper.BitmapWorkerTask.getClazz(context);
-        if (workerTaskClass == null) {
-            workerTaskClass = XposedHelpers.findClassIfExists("w94.b", context.getClassLoader());
-        }
-        if (workerTaskClass == null) {
-            workerTaskClass = XposedHelpers.findClassIfExists("com.yalantis.ucrop.task.BitmapWorkerTask", context.getClassLoader());
-        }
-        if (workerTaskClass != null) {
-            try {
-                XposedBridge.hookAllMethods(workerTaskClass, "doInBackground", new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                        if (param.hasThrowable()) {
-                            XposedBridge.log("[dolby_beta] Suppressed BitmapWorkerTask crash: " + param.getThrowable());
-                            param.setThrowable(null);
-                            param.setResult(null);
-                        }
-                    }
-                });
-            } catch (Throwable ignored) {
-            }
-        }
-    }
-
-    private static void setupPlayerBackground(Activity activity) {
-        if (activity == null) return;
-        try {
-            ViewGroup container = null;
-            try {
-                Object m1 = XposedHelpers.getObjectField(activity, "m1");
-                if (m1 instanceof ViewGroup) {
-                    container = (ViewGroup) m1;
-                }
-            } catch (Throwable ignored) {
-            }
-
-            if (container == null) {
-                View decor = activity.getWindow().getDecorView();
-                container = findContainerViewGroup(decor);
-            }
-
-            if (container == null) {
-                View content = activity.findViewById(android.R.id.content);
-                if (content instanceof ViewGroup) {
-                    container = (ViewGroup) content;
-                }
-            }
-
-            if (container != null) {
-                View existingBg = container.findViewWithTag("dolby_player_custom_bg");
-                ImageView bgImageView;
-                if (existingBg instanceof ImageView) {
-                    bgImageView = (ImageView) existingBg;
-                } else {
-                    bgImageView = new ImageView(activity);
-                    bgImageView.setTag("dolby_player_custom_bg");
-                    bgImageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                    );
-                    container.addView(bgImageView, 0, lp);
-                }
-                sLastBgView = new WeakReference<>(bgImageView);
-                if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)
-                        && !TextUtils.isEmpty(SettingHelper.getInstance().getPictureUrl())) {
-                    bgImageView.setVisibility(View.VISIBLE);
-                    Bitmap blurred = getCustomBlurredBitmap(activity);
-                    if (blurred != null) {
-                        applyToAllBgViews(blurred, activity);
-                    }
-                } else {
-                    bgImageView.setVisibility(View.GONE);
-                }
-            }
-
-            // 隐藏可能覆盖官方图层的 PlayerCustomBackgroundView
-            try {
-                Object z0 = XposedHelpers.getObjectField(activity, "z0");
-                if (z0 instanceof View) {
-                    if (SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-                        ((View) z0).setVisibility(View.GONE);
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
-
-            // 立即触发背景加载与渲染
-            reloadBackground();
-        } catch (Throwable t) {
-            XposedBridge.log("[dolby_beta] setupPlayerBackground error: " + t);
-        }
-    }
-
-    private static ViewGroup findContainerViewGroup(View root) {
-        if (root == null) return null;
-        if (root.getClass().getName().contains("PlayerContainerRelativeLayout")) {
-            return (ViewGroup) root;
-        }
-        if (root instanceof ViewGroup) {
-            ViewGroup vg = (ViewGroup) root;
-            for (int i = 0; i < vg.getChildCount(); i++) {
-                ViewGroup found = findContainerViewGroup(vg.getChildAt(i));
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 实时重新加载播放页背景
-     */
-    public static void reloadBackground() {
-        new Handler(Looper.getMainLooper()).post(() -> {
-            try {
-                boolean enabled = SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key);
-                String customPath = SettingHelper.getInstance().getPictureUrl();
-
-                if (!enabled || TextUtils.isEmpty(customPath)) {
-                    if (sLastBgView != null && sLastBgView.get() != null) {
-                        sLastBgView.get().setVisibility(View.GONE);
-                    }
-                    if (sLastChildBgView != null && sLastChildBgView.get() != null) {
-                        sLastChildBgView.get().setAlpha(1.0f);
-                        sLastChildBgView.get().invalidate();
-                    }
-                    if (sLastPlayerActivity != null) {
-                        Activity act = sLastPlayerActivity.get();
-                        if (act != null) {
-                            try {
-                                Object m1 = XposedHelpers.getObjectField(act, "m1");
-                                if (m1 instanceof View) {
-                                    ((View) m1).setBackground(null);
-                                }
-                            } catch (Throwable ignored) {
-                            }
-                        }
-                    }
-                    return;
-                }
-
-                Context ctx = sLastContext != null ? sLastContext.get() : null;
-                if (ctx == null && sLastPlayerActivity != null) {
-                    ctx = sLastPlayerActivity.get();
-                }
-                if (ctx == null && sLastBgView != null && sLastBgView.get() != null) {
-                    ctx = sLastBgView.get().getContext();
-                }
-                if (ctx == null) return;
-                final Context appContext = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
-
-                // 1. 本地图片
-                String cleanPath = customPath.startsWith("file://") ? customPath.substring(7) : customPath;
-                if (cleanPath.startsWith("/")) {
-                    File file = new File(cleanPath);
-                    if (file.exists() && file.isFile() && file.length() > 0) {
-                        int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
-                        new Thread(() -> {
-                            Bitmap blurred = getOrLoadBlurredBitmap(file, blurRadius, appContext);
-                            if (blurred != null) {
-                                new Handler(Looper.getMainLooper()).post(() -> applyToAllBgViews(blurred, appContext));
-                            }
-                        }).start();
-                    }
-                    return;
-                }
-
-                // 2. 网络图片 (http:// 或 https://)
-                if (customPath.startsWith("http://") || customPath.startsWith("https://")) {
-                    final int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
-                    final String urlStr = customPath;
-                    new Thread(() -> {
-                        Bitmap blurred = loadAndBlurNetworkImage(urlStr, blurRadius, appContext);
-                        if (blurred != null) {
-                            new Handler(Looper.getMainLooper()).post(() -> applyToAllBgViews(blurred, appContext));
-                        }
-                    }).start();
-                }
-            } catch (Throwable t) {
-                XposedBridge.log("[dolby_beta] reloadBackground failed: " + t);
-            }
-        });
-    }
-
-    private static void applyToAllBgViews(Bitmap blurred, Context ctx) {
-        if (blurred == null || ctx == null) return;
-        BitmapDrawable drawable = new BitmapDrawable(ctx.getResources(), blurred);
-
-        if (sLastBgView != null) {
-            View v = sLastBgView.get();
-            if (v != null) {
-                v.setVisibility(View.VISIBLE);
-                applyBitmapToView(v, blurred);
-            }
-        }
-        if (sLastBgObject != null) {
-            Object bgObj = sLastBgObject.get();
-            if (bgObj != null) {
-                try {
-                    XposedHelpers.callMethod(bgObj, "setImageDrawable", drawable);
-                } catch (Throwable ignored) {
-                }
-            }
-        }
-        if (sLastImageSwitcher != null) {
-            ImageSwitcher is = sLastImageSwitcher.get();
-            if (is != null) {
-                is.setImageDrawable(drawable);
-            }
-        }
-        if (sLastPlayerActivity != null) {
-            Activity act = sLastPlayerActivity.get();
-            if (act != null) {
-                try {
-                    Object m1 = XposedHelpers.getObjectField(act, "m1");
-                    if (m1 instanceof View) {
-                        ((View) m1).setBackground(drawable);
-                    }
-                } catch (Throwable ignored) {
-                }
-                try {
-                    Object e1 = XposedHelpers.getObjectField(act, "e1");
-                    if (e1 instanceof ImageView) {
-                        ((ImageView) e1).setImageDrawable(drawable);
-                    }
-                } catch (Throwable ignored) {
-                }
-                try {
-                    Object d1 = XposedHelpers.getObjectField(act, "d1");
-                    if (d1 instanceof ImageView) {
-                        ((ImageView) d1).setImageDrawable(drawable);
-                    }
-                } catch (Throwable ignored) {
-                }
-                try {
-                    Object j = XposedHelpers.getObjectField(act, "j");
-                    if (j instanceof ImageView) {
-                        ((ImageView) j).setImageDrawable(drawable);
-                    }
-                } catch (Throwable ignored) {
-                }
-                try {
-                    Object z0 = XposedHelpers.getObjectField(act, "z0");
-                    if (z0 instanceof View) {
-                        ((View) z0).setVisibility(View.GONE);
-                    }
-                } catch (Throwable ignored) {
-                }
-            }
-        }
-        if (sLastChildBgView != null) {
-            View child = sLastChildBgView.get();
-            if (child != null) {
-                child.invalidate();
-            }
-        }
-    }
-
-    private static Bitmap loadAndBlurNetworkImage(String urlStr, int blurRadius, Context ctx) {
-        try {
-            File cacheDir = ctx.getCacheDir();
-            File cacheFile = new File(cacheDir, "dolby_bg_" + Integer.toHexString(urlStr.hashCode()) + ".img");
-            if (!cacheFile.exists() || cacheFile.length() == 0) {
-                URL url = new URL(urlStr);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
-                conn.setInstanceFollowRedirects(true);
-                conn.connect();
-                if (conn.getResponseCode() == 200) {
-                    try (InputStream in = conn.getInputStream();
-                         FileOutputStream out = new FileOutputStream(cacheFile)) {
-                        byte[] buf = new byte[8192];
-                        int len;
-                        while ((len = in.read(buf)) != -1) {
-                            out.write(buf, 0, len);
-                        }
-                    }
-                }
-                conn.disconnect();
-            }
-            if (cacheFile.exists() && cacheFile.length() > 0) {
-                return getOrLoadBlurredBitmap(cacheFile, blurRadius, ctx);
-            }
-        } catch (Throwable t) {
-            XposedBridge.log("[dolby_beta] loadAndBlurNetworkImage error: " + t);
-        }
-        return null;
-    }
-
-    private static Context getContextFromBgObject(Object bgObj) {
-        if (bgObj == null) return sLastContext != null ? sLastContext.get() : null;
-        try {
-            Field f = bgObj.getClass().getDeclaredField("mContext");
-            f.setAccessible(true);
-            Context c = (Context) f.get(bgObj);
-            if (c != null) return c;
-        } catch (Throwable ignored) {
-        }
-        try {
-            Field f = bgObj.getClass().getDeclaredField("mImageSwitcher");
-            f.setAccessible(true);
-            View v = (View) f.get(bgObj);
-            if (v != null) return v.getContext();
-        } catch (Throwable ignored) {
-        }
-        return sLastContext != null ? sLastContext.get() : null;
     }
 
     private static void applyBlackHideFromDecorView(View root) {
@@ -915,7 +267,6 @@ public class PlayerActivityHook {
                     }
                 }
                 if (albumImage == null) {
-                    // 若无明确ID，取尺寸较小者或最内层元素作为封面
                     ImageView first = imageViews.get(0);
                     ImageView second = imageViews.get(1);
                     if (first.getWidth() > second.getWidth() && second.getWidth() > 0) {
@@ -961,134 +312,5 @@ public class PlayerActivityHook {
                 findImageViews((ViewGroup) c, out);
             }
         }
-    }
-
-    private static void applyBitmapToView(View targetView, Bitmap blurred) {
-        if (targetView == null || blurred == null) {
-            return;
-        }
-        Runnable apply = () -> {
-            try {
-                if (targetView instanceof ImageView) {
-                    ImageView iv = (ImageView) targetView;
-                    iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    iv.setImageDrawable(new BitmapDrawable(targetView.getResources(), blurred));
-                } else {
-                    try {
-                        Method m = targetView.getClass().getMethod("setImageDrawable", Drawable.class);
-                        m.invoke(targetView, new BitmapDrawable(targetView.getResources(), blurred));
-                    } catch (Throwable ignored) {
-                        if (targetView instanceof ViewGroup) {
-                            ViewGroup vg = (ViewGroup) targetView;
-                            for (int i = 0; i < vg.getChildCount(); i++) {
-                                View child = vg.getChildAt(i);
-                                if (child instanceof ImageView) {
-                                    ((ImageView) child).setScaleType(ImageView.ScaleType.CENTER_CROP);
-                                    ((ImageView) child).setImageDrawable(new BitmapDrawable(targetView.getResources(), blurred));
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (Throwable t) {
-                XposedBridge.log("[dolby_beta] applyBitmapToView error: " + t);
-            }
-        };
-
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            apply.run();
-        } else {
-            targetView.post(apply);
-        }
-    }
-
-    public static Bitmap getCustomBlurredBitmap(Context context) {
-        if (!SettingHelper.getInstance().isEnable(SettingHelper.beauty_background_key)) {
-            return null;
-        }
-        String customPath = SettingHelper.getInstance().getPictureUrl();
-        if (TextUtils.isEmpty(customPath)) {
-            return null;
-        }
-        String cleanPath = customPath.startsWith("file://") ? customPath.substring(7) : customPath;
-        if (cleanPath.startsWith("/")) {
-            File file = new File(cleanPath);
-            if (file.exists() && file.isFile() && file.length() > 0) {
-                int blurRadius = SettingHelper.getInstance().getBackgroundBlur();
-                return getOrLoadBlurredBitmap(file, blurRadius, context);
-            }
-        }
-        return sCachedBitmap;
-    }
-
-    private static synchronized Bitmap getOrLoadBlurredBitmap(File file, int blurRadius, Context context) {
-        String cacheKey = file.getAbsolutePath() + "_" + file.lastModified() + "_r" + blurRadius;
-        if (cacheKey.equals(sCachedKey) && sCachedBitmap != null && !sCachedBitmap.isRecycled()) {
-            return sCachedBitmap;
-        }
-
-        try {
-            BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inJustDecodeBounds = true;
-            BitmapFactory.decodeFile(file.getAbsolutePath(), options);
-            if (options.outWidth <= 0 || options.outHeight <= 0) {
-                return null;
-            }
-
-            int targetW = 480;
-            int targetH = 800;
-            if (context != null && context.getResources() != null) {
-                DisplayMetrics dm = context.getResources().getDisplayMetrics();
-                if (dm != null && dm.widthPixels > 0) {
-                    targetW = Math.max(360, dm.widthPixels / 2);
-                    targetH = Math.max(640, dm.heightPixels / 2);
-                }
-            }
-
-            options.inSampleSize = calculateInSampleSize(options, targetW, targetH);
-            options.inJustDecodeBounds = false;
-            options.inMutable = true;
-            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-
-            Bitmap raw = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
-            if (raw == null) {
-                return null;
-            }
-
-            Bitmap result;
-            if (blurRadius <= 0) {
-                result = raw;
-            } else {
-                int radius = Math.max(1, Math.min(50, blurRadius));
-                result = FastBlur.doBlur(raw, radius, true);
-            }
-
-            if (result != null) {
-                if (sCachedBitmap != null && !sCachedBitmap.isRecycled() && sCachedBitmap != result) {
-                    sCachedBitmap.recycle();
-                }
-                sCachedKey = cacheKey;
-                sCachedBitmap = result;
-                return result;
-            }
-        } catch (Throwable t) {
-            XposedBridge.log("[dolby_beta] load custom bg bitmap failed: " + t);
-        }
-        return null;
-    }
-
-    private static int calculateInSampleSize(BitmapFactory.Options options, int reqWidth, int reqHeight) {
-        int height = options.outHeight;
-        int width = options.outWidth;
-        int inSampleSize = 1;
-        if (height > reqHeight || width > reqWidth) {
-            final int halfHeight = height / 2;
-            final int halfWidth = width / 2;
-            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
-                inSampleSize *= 2;
-            }
-        }
-        return Math.max(1, inSampleSize);
     }
 }

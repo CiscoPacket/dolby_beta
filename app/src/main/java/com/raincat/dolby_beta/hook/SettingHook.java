@@ -33,6 +33,7 @@ import android.widget.TextView;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
+import com.raincat.dolby_beta.helper.DebugLogger;
 import com.raincat.dolby_beta.helper.ExtraHelper;
 import com.raincat.dolby_beta.helper.SettingHelper;
 import com.raincat.dolby_beta.model.SidebarEnum;
@@ -41,18 +42,11 @@ import com.raincat.dolby_beta.view.BaseDialogInputItem;
 import com.raincat.dolby_beta.view.BaseDialogItem;
 import com.raincat.dolby_beta.view.beauty.BeautyBlackHideView;
 import com.raincat.dolby_beta.view.beauty.BeautyCommentHotView;
-import com.raincat.dolby_beta.view.beauty.BeautyNightModeView;
 import com.raincat.dolby_beta.view.beauty.BeautyRotationView;
 import com.raincat.dolby_beta.view.beauty.BeautySidebarHideItem;
 import com.raincat.dolby_beta.view.beauty.BeautySidebarHideView;
 import com.raincat.dolby_beta.view.beauty.BeautyTabHideView;
 import com.raincat.dolby_beta.view.beauty.BeautyTitleView;
-import com.raincat.dolby_beta.view.beauty.PlayerBackgroundView;
-import com.raincat.dolby_beta.view.beauty.background.BackgroundMasterView;
-import com.raincat.dolby_beta.view.beauty.background.BackgroundTitleView;
-import com.raincat.dolby_beta.view.beauty.background.BackgroundPictureUrlView;
-import com.raincat.dolby_beta.view.beauty.background.BackgroundBlurRadiusView;
-import com.raincat.dolby_beta.view.beauty.background.BackgroundLocalPictureView;
 import com.raincat.dolby_beta.view.proxy.*;
 import com.raincat.dolby_beta.view.proxy.configuration.*;
 import com.raincat.dolby_beta.view.setting.AboutView;
@@ -69,7 +63,6 @@ import com.raincat.dolby_beta.view.setting.SignSongSelfView;
 import com.raincat.dolby_beta.view.setting.SignView;
 import com.raincat.dolby_beta.view.setting.TitleView;
 import com.raincat.dolby_beta.view.setting.UpdateView;
-import com.raincat.dolby_beta.view.setting.ListenView;
 import com.raincat.dolby_beta.view.setting.WarnView;
 
 import android.net.Uri;
@@ -116,74 +109,12 @@ public class SettingHook {
     private static WeakReference<View> rnCardRef;
     private static WeakReference<Activity> rnActivityRef;
     private static SharedPreferences.OnSharedPreferenceChangeListener themePrefListener;
-    public static final int REQUEST_CODE_PICK_BG = 0x8823;
     private TextView titleView, subView;
-    private LinearLayout dialogRoot, dialogProxyRoot, dialogProxyConfigRoot, dialogBeautyRoot, dialogPlayerBgRoot, dialogSidebarRoot;
-
-    private final XC_MethodHook activityResultHook = new XC_MethodHook() {
-        @Override
-        protected void beforeHookedMethod(MethodHookParam param) {
-            int requestCode = (int) param.args[0];
-            int resultCode = (int) param.args[1];
-            Intent data = (Intent) param.args[2];
-            if (requestCode == REQUEST_CODE_PICK_BG) {
-                param.setResult(null);
-                if (resultCode == Activity.RESULT_OK && data != null) {
-                    android.net.Uri uri = data.getData();
-                    if (uri == null && data.getClipData() != null && data.getClipData().getItemCount() > 0) {
-                        uri = data.getClipData().getItemAt(0).getUri();
-                    }
-                    if (uri != null) {
-                        Activity activity = (Activity) param.thisObject;
-                        handleSelectedImageUri(activity, uri);
-                    }
-                }
-            }
-        }
-    };
+    private LinearLayout dialogRoot, dialogProxyRoot, dialogProxyConfigRoot, dialogBeautyRoot, dialogSidebarRoot;
 
     private BroadcastReceiver broadcastReceiver;
 
     public SettingHook(Context context, int versionCode) {
-        try {
-            findAndHookMethod(Activity.class, "dispatchActivityResult", String.class, int.class, int.class, Intent.class, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    int requestCode = (int) param.args[1];
-                    int resultCode = (int) param.args[2];
-                    Intent data = (Intent) param.args[3];
-                    if (requestCode == REQUEST_CODE_PICK_BG) {
-                        param.setResult(null);
-                        if (resultCode == Activity.RESULT_OK && data != null) {
-                            android.net.Uri uri = data.getData();
-                            if (uri == null && data.getClipData() != null && data.getClipData().getItemCount() > 0) {
-                                uri = data.getClipData().getItemAt(0).getUri();
-                            }
-                            if (uri != null) {
-                                Activity activity = (Activity) param.thisObject;
-                                handleSelectedImageUri(activity, uri);
-                            }
-                        }
-                    }
-                }
-            });
-        } catch (Throwable t) {
-            XposedBridge.log("[dolby_beta] hook Activity.dispatchActivityResult failed: " + t);
-        }
-
-        try {
-            findAndHookMethod(Activity.class, "onActivityResult", int.class, int.class, Intent.class, activityResultHook);
-        } catch (Throwable t) {
-            XposedBridge.log("[dolby_beta] hook Activity.onActivityResult failed: " + t);
-        }
-
-        Class<?> fragActivityClz = findClassIfExists("androidx.fragment.app.FragmentActivity", context.getClassLoader());
-        if (fragActivityClz != null) {
-            try {
-                findAndHookMethod(fragActivityClz, "onActivityResult", int.class, int.class, Intent.class, activityResultHook);
-            } catch (Throwable ignored) {
-            }
-        }
 
         hookRnSettingPage(context.getClassLoader());
         Class<?> settingActivityClass = resolveSettingActivity(context.getClassLoader(), versionCode);
@@ -193,10 +124,6 @@ public class SettingHook {
         }
         XposedBridge.log("[dolby_beta] hook SettingActivity=" + settingActivityClass.getName() + " versionCode=" + versionCode);
 
-        try {
-            findAndHookMethod(settingActivityClass, "onActivityResult", int.class, int.class, Intent.class, activityResultHook);
-        } catch (Throwable ignored) {
-        }
 
         findAndHookMethod(settingActivityClass, "onCreate", Bundle.class, new XC_MethodHook() {
             @Override
@@ -288,10 +215,6 @@ public class SettingHook {
             }
             try {
                 findAndHookMethod(clazz, "onResume", injectHook);
-                try {
-                    findAndHookMethod(clazz, "onActivityResult", int.class, int.class, Intent.class, activityResultHook);
-                } catch (Throwable ignored) {
-                }
                 XposedBridge.log("[dolby_beta] hooked RN host " + name);
             } catch (Throwable t) {
                 XposedBridge.log("[dolby_beta] hook RN host failed " + name + ": " + t);
@@ -1555,7 +1478,6 @@ public class SettingHook {
         intentFilter.addAction(SettingHelper.proxy_setting);
         intentFilter.addAction(SettingHelper.beauty_setting);
         intentFilter.addAction(SettingHelper.sidebar_setting);
-        intentFilter.addAction(SettingHelper.background_setting);
         intentFilter.addAction(SettingHelper.proxy_configuration_setting);
         broadcastReceiver = new BroadcastReceiver() {
             @Override
@@ -1563,24 +1485,20 @@ public class SettingHook {
                 String action = intent.getAction();
                 if (SettingHelper.refresh_setting.equals(action)) {
                     SettingHelper.getInstance().refreshSetting(context);
+                    DebugLogger.onSettingChanged(context);
+                    // 精简侧边栏开关/勾选变化 -> 立即重扫 (关闭时马上还原被折叠的行与滚动开关)
+                    HideSidebarHook.onSidebarSettingChanged();
                     refreshDialogItems(dialogRoot);
                     refreshDialogItems(dialogProxyRoot);
                     refreshDialogItems(dialogProxyConfigRoot);
                     refreshDialogItems(dialogBeautyRoot);
-                    refreshDialogItems(dialogPlayerBgRoot);
                     refreshDialogItems(dialogSidebarRoot);
-                    try {
-                        PlayerActivityHook.reloadBackground();
-                    } catch (Throwable ignored) {
-                    }
                 } else if (SettingHelper.proxy_setting.equals(action)) {
                     showProxyDialog(context);
                 } else if (SettingHelper.beauty_setting.equals(action)) {
                     showBeautyDialog(context);
                 } else if (SettingHelper.sidebar_setting.equals(action)) {
                     showSidebarDialog(context);
-                } else if (SettingHelper.background_setting.equals(action)) {
-                    showPlayerBackgroundDialog(context);
                 } else if (SettingHelper.proxy_configuration_setting.equals(action)) {
                     showProxyConfigurationDialog(context);
                 }
@@ -1624,8 +1542,6 @@ public class SettingHook {
         debugView.setBaseOnView(masterView);
         BlackView blackView = new BlackView(context);
         blackView.setBaseOnView(masterView);
-        ListenView listenView = new ListenView(context);
-        listenView.setBaseOnView(masterView);
         FixCommentView fixCommentView = new FixCommentView(context);
         fixCommentView.setBaseOnView(masterView);
         UpdateView updateView = new UpdateView(context);
@@ -1652,7 +1568,6 @@ public class SettingHook {
         dialogRoot.addView(warnView);
         dialogRoot.addView(debugView);
         dialogRoot.addView(blackView);
-        dialogRoot.addView(listenView);
         dialogRoot.addView(fixCommentView);
         dialogRoot.addView(updateView);
         dialogRoot.addView(signView);
@@ -1729,33 +1644,6 @@ public class SettingHook {
                 "保存并重启", (dialogInterface, i) -> restartApplication(context));
     }
 
-    private void showPlayerBackgroundDialog(final Context context) {
-        dialogPlayerBgRoot = new BaseDialogItem(context);
-        dialogPlayerBgRoot.setOrientation(LinearLayout.VERTICAL);
-        ScrollView scrollView = new ScrollView(context);
-        scrollView.setOverScrollMode(ScrollView.OVER_SCROLL_NEVER);
-        scrollView.setVerticalScrollBarEnabled(false);
-        scrollView.addView(dialogPlayerBgRoot);
-
-        BackgroundMasterView backgroundMasterView = new BackgroundMasterView(context);
-        BackgroundLocalPictureView backgroundLocalPictureView = new BackgroundLocalPictureView(context);
-        backgroundLocalPictureView.setBaseOnView(backgroundMasterView);
-        BackgroundPictureUrlView backgroundPictureUrlView = new BackgroundPictureUrlView(context);
-        backgroundPictureUrlView.setBaseOnView(backgroundMasterView);
-        BackgroundBlurRadiusView backgroundBlurRadiusView = new BackgroundBlurRadiusView(context);
-        backgroundBlurRadiusView.setBaseOnView(backgroundMasterView);
-
-        dialogPlayerBgRoot.addView(new BackgroundTitleView(context));
-        dialogPlayerBgRoot.addView(backgroundMasterView);
-        dialogPlayerBgRoot.addView(backgroundLocalPictureView);
-        dialogPlayerBgRoot.addView(backgroundPictureUrlView);
-        dialogPlayerBgRoot.addView(backgroundBlurRadiusView);
-
-        showLightDialog(context, scrollView, true,
-                "仅保存", (dialogInterface, i) -> refresh(),
-                "保存并重启", (dialogInterface, i) -> restartApplication(context));
-    }
-
     private void showBeautyDialog(final Context context) {
         dialogBeautyRoot = new BaseDialogItem(context);
         dialogBeautyRoot.setOrientation(LinearLayout.VERTICAL);
@@ -1764,92 +1652,21 @@ public class SettingHook {
         scrollView.setVerticalScrollBarEnabled(false);
         scrollView.addView(dialogBeautyRoot);
 
-        PlayerBackgroundView playerBackgroundView = new PlayerBackgroundView(context);
         BeautySidebarHideView beautySidebarHideView = new BeautySidebarHideView(context);
-        playerBackgroundView.setOnClickListener(view -> showPlayerBackgroundDialog(context));
         beautySidebarHideView.setOnClickListener(view -> showSidebarDialog(context));
 
         dialogBeautyRoot.addView(new BeautyTitleView(context));
-        dialogBeautyRoot.addView(new BeautyNightModeView(context));
         dialogBeautyRoot.addView(new BeautyTabHideView(context));
         dialogBeautyRoot.addView(beautySidebarHideView);
         dialogBeautyRoot.addView(new BeautyBlackHideView(context));
         dialogBeautyRoot.addView(new BeautyRotationView(context));
         dialogBeautyRoot.addView(new BeautyCommentHotView(context));
-        dialogBeautyRoot.addView(playerBackgroundView);
         showLightDialog(context, scrollView, true,
                 "仅保存", (dialogInterface, i) -> refresh(),
                 "保存并重启", (dialogInterface, i) -> restartApplication(context));
     }
 
-    public static void startImagePicker(Activity activity) {
-        try {
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.setType("image/*");
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            activity.startActivityForResult(Intent.createChooser(intent, "选择背景图片"), REQUEST_CODE_PICK_BG);
-        } catch (Throwable t) {
-            try {
-                Intent intent = new Intent(Intent.ACTION_PICK);
-                intent.setType("image/*");
-                activity.startActivityForResult(intent, REQUEST_CODE_PICK_BG);
-            } catch (Throwable t2) {
-                Toast.makeText(activity, "无法启动图片选择器: " + t2.getMessage(), Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    public static void handleSelectedImageUri(final Activity activity, final Uri uri) {
-        if (activity == null || uri == null) {
-            return;
-        }
-        new Thread(() -> {
-            try {
-                File dir = new File(activity.getFilesDir(), "dolby_background");
-                if (!dir.exists()) {
-                    dir.mkdirs();
-                }
-                File destFile = new File(dir, "player_bg.png");
-                InputStream is = activity.getContentResolver().openInputStream(uri);
-                if (is == null) {
-                    activity.runOnUiThread(() -> Toast.makeText(activity, "无法读取选中的图片", Toast.LENGTH_SHORT).show());
-                    return;
-                }
-                FileOutputStream fos = new FileOutputStream(destFile);
-                byte[] buffer = new byte[8192];
-                int len;
-                while ((len = is.read(buffer)) > 0) {
-                    fos.write(buffer, 0, len);
-                }
-                fos.flush();
-                fos.close();
-                is.close();
-
-                destFile.setLastModified(System.currentTimeMillis());
-
-                SettingHelper.getInstance().setSetting(SettingHelper.beauty_background_key, true);
-                SettingHelper.getInstance().setPictureUrl(destFile.getAbsolutePath());
-
-                activity.runOnUiThread(() -> {
-                    try {
-                        Intent refreshIntent = new Intent(SettingHelper.refresh_setting);
-                        LocalBroadcastManager.getInstance(activity).sendBroadcast(refreshIntent);
-                        try {
-                            activity.sendBroadcast(refreshIntent);
-                        } catch (Throwable ignored) {
-                        }
-                    } catch (Throwable ignored) {
-                    }
-                    Toast.makeText(activity, "背景图片选择成功！", Toast.LENGTH_SHORT).show();
-                });
-            } catch (Throwable t) {
-                XposedBridge.log("[dolby_beta] handleSelectedImageUri failed: " + t);
-                activity.runOnUiThread(() -> {
-                    Toast.makeText(activity, "保存背景图片失败: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-                });
-            }
-        }).start();
-    }
+    private volatile boolean sidebarScanning;
 
     private void showSidebarDialog(final Context context) {
         dialogSidebarRoot = new BaseDialogItem(context);
@@ -1858,20 +1675,87 @@ public class SettingHook {
         scrollView.setOverScrollMode(ScrollView.OVER_SCROLL_NEVER);
         scrollView.setVerticalScrollBarEnabled(false);
         scrollView.addView(dialogSidebarRoot);
+        scrollView.setBackgroundColor(Color.WHITE);
 
+        appendSidebarItems(context);
+
+        // 刷新按钮放在"确定"旁边 (中性按钮位), 点击不关闭对话框
+        AlertDialog.Builder builder = new AlertDialog.Builder(context, android.R.style.Theme_Material_Light_Dialog_Alert)
+                .setView(scrollView)
+                .setCancelable(true)
+                .setPositiveButton("确定", (dialogInterface, i) -> refresh())
+                .setNeutralButton("刷新条目列表", null);
+        AlertDialog dialog = builder.create();
+        dialog.show();
+        android.widget.Button refreshBtn = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+        if (refreshBtn != null) {
+            refreshBtn.setTextColor(Color.parseColor("#0A7AFF"));
+            refreshBtn.setOnClickListener(v -> startSidebarRescan(context));
+        }
+    }
+
+    /** 重新扫描侧边栏条目: 触发抽屉重扫, 扫描期间清单顶部显示进行中状态 */
+    private void startSidebarRescan(final Context context) {
+        try {
+            sidebarScanning = true;
+            HideSidebarHook.onSidebarSettingChanged();
+            rebuildSidebarItems(context);
+            android.widget.Toast.makeText(context, "开始重新扫描侧边栏条目…", android.widget.Toast.LENGTH_SHORT).show();
+            if (dialogSidebarRoot != null) {
+                // 扫描节奏 600/2000/3500ms, 末拍后收尾
+                dialogSidebarRoot.postDelayed(() -> rebuildSidebarItems(context), 900);
+                dialogSidebarRoot.postDelayed(() -> rebuildSidebarItems(context), 2100);
+                dialogSidebarRoot.postDelayed(() -> finishSidebarRescan(context), 3900);
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("[dolby_beta] sidebar rescan error: " + t);
+        }
+    }
+
+    private void finishSidebarRescan(final Context context) {
+        sidebarScanning = false;
+        rebuildSidebarItems(context);
+        int count = SidebarEnum.getSidebarEnum().size();
+        android.widget.Toast.makeText(context, "扫描完成：已识别 " + count + " 个条目", android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    /** 按当前动态清单重建侧边栏条目勾选项 (扫描期间顶部显示进行中状态) */
+    private void appendSidebarItems(final Context context) {
+        if (sidebarScanning) {
+            android.widget.TextView status = new android.widget.TextView(context);
+            status.setText("正在重新扫描侧边栏条目，请稍候…");
+            status.setTextSize(13);
+            status.setTextColor(Color.DKGRAY);
+            status.setPadding(48, 32, 48, 16);
+            dialogSidebarRoot.addView(status);
+        }
         final LinkedHashMap<String, String> sidebarMap = SidebarEnum.getSidebarEnum();
         final HashMap<String, Boolean> sidebarSettingMap = SettingHelper.getInstance().getSidebarSetting(sidebarMap);
-        if (sidebarMap != null) {
+        if (sidebarMap == null || sidebarMap.isEmpty()) {
+            if (!sidebarScanning) {
+                android.widget.TextView hint = new android.widget.TextView(context);
+                hint.setText("尚未获取到侧边栏条目：请先打开一次网易云的侧边栏抽屉，然后点\"刷新条目列表\"。");
+                hint.setTextSize(14);
+                hint.setPadding(48, 40, 48, 40);
+                dialogSidebarRoot.addView(hint);
+            }
+        } else {
             for (Map.Entry<String, String> entry : sidebarMap.entrySet()) {
                 BeautySidebarHideItem item = new BeautySidebarHideItem(context);
                 item.initData(sidebarMap, sidebarSettingMap, entry.getKey());
                 dialogSidebarRoot.addView(item);
             }
         }
+    }
 
-        showLightDialog(context, scrollView, true,
-                "确定", (dialogInterface, i) -> refresh(),
-                null, null);
+    private void rebuildSidebarItems(final Context context) {
+        try {
+            if (dialogSidebarRoot == null) return;
+            dialogSidebarRoot.removeAllViews();
+            appendSidebarItems(context);
+        } catch (Throwable t) {
+            XposedBridge.log("[dolby_beta] rebuildSidebarItems error: " + t);
+        }
     }
 
     private void showLightDialog(Context context, View content, boolean cancelable,

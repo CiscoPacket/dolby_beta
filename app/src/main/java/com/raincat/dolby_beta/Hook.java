@@ -27,12 +27,10 @@ import com.raincat.dolby_beta.hook.HideTabHook;
 import com.raincat.dolby_beta.hook.InternalDialogHook;
 import com.raincat.dolby_beta.hook.LoginFixHook;
 import com.raincat.dolby_beta.hook.MagiskFixHook;
-import com.raincat.dolby_beta.hook.NightModeHook;
 import com.raincat.dolby_beta.hook.PlayerActivityHook;
 import com.raincat.dolby_beta.hook.ProxyHook;
 import com.raincat.dolby_beta.hook.SettingHook;
 import com.raincat.dolby_beta.hook.UserProfileHook;
-import com.raincat.dolby_beta.hook.ListentogetherHook;
 import com.raincat.dolby_beta.utils.Tools;
 
 import java.io.File;
@@ -71,13 +69,13 @@ public class Hook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                         final Context context = (Context) param.thisObject;
-                        // 初始化调试日志系统与崩溃捕获
-                        DebugLogger.init(context);
                         final int versionCode = context.getPackageManager().getPackageInfo(PACKAGE_NAME, 0).versionCode;
                         //初始化仓库
                         ExtraHelper.init(context);
-                        //初始化设置
+                        //初始化设置 (必须在 DebugLogger.init 之前, 否则调试开关读取不到, 冷启动日志收集不会启动)
                         SettingHelper.init(context);
+                        //初始化调试日志系统与崩溃捕获
+                        DebugLogger.init(context);
                         //初始化ClassHelper
                         ClassHelper.init(context, versionCode);
 
@@ -95,10 +93,6 @@ public class Hook {
                             if (SettingHelper.getInstance().isEnable(SettingHelper.black_key)) {
                                 deleteAdAndTinker();
                             }
-                            //一起听
-                            if (SettingHelper.getInstance().isEnable(SettingHelper.listen_key)) {
-                                new ListentogetherHook(context,versionCode);
-                            }
                             //不变灰
                             new GrayHook(context);
                             //自动签到
@@ -112,22 +106,25 @@ public class Hook {
                             //修复登录失败
                             new LoginFixHook(context);
                             //美化与界面定制（不依赖DexKit，主线程同步立即注册，避免时机过晚导致不生效）
-                            new NightModeHook(context, versionCode);
-                            new HideTabHook(context, versionCode);
-                            new HideSidebarHook(context, versionCode);
-                            new PlayerActivityHook(context, versionCode);
-                            new CommentHotClickHook(context);
-                            new AdExtraHook();
+                            //逐个隔离异常: 任何一个 hook 构造失败都不能杀死后续注册 (尤其 EAPIHook 所依赖的 getCacheClassList)
+                            safeHook("HideTabHook", () -> new HideTabHook(context, versionCode));
+                            safeHook("HideSidebarHook", () -> new HideSidebarHook(context, versionCode));
+                            safeHook("PlayerActivityHook", () -> new PlayerActivityHook(context, versionCode));
+                            safeHook("CommentHotClickHook", () -> new CommentHotClickHook(context));
+                            safeHook("AdExtraHook", () -> new AdExtraHook());
 
                             ClassHelper.getCacheClassList(context, versionCode, () -> {
                                 //获取账号信息
-                                new UserProfileHook(context);
+                                safeHook("UserProfileHook", () -> new UserProfileHook(context));
                                 //网络访问
-                                new EAPIHook(context);
+                                safeHook("EAPIHook", () -> new EAPIHook(context));
                                 //下载MD5校验
-                                new DownloadMD5Hook(context);
+                                safeHook("DownloadMD5Hook", () -> new DownloadMD5Hook(context));
                                 //绕过CDN责任链拦截器检测
-                                new CdnHook(context, versionCode);
+                                safeHook("CdnHook", () -> new CdnHook(context, versionCode));
+                                safeHook("CommentHotClickDexKit", () -> CommentHotClickHook.initDexKitHooks(context));
+                                //精简Tab 的 DexKit 结构特征兜底 (后台线程执行, 避免主线程 DexKit 扫描卡顿)
+                                safeHook("HideTabDexKitFallback", () -> HideTabHook.onCacheClassListReady(context));
 
                                 mainProcessInit = true;
                                 if (mainProcessInit && playProcessInit)
@@ -192,6 +189,18 @@ public class Hook {
                     param.args[0] = 0;
                 }
             });
+    }
+
+    /**
+     * 单个 hook 注册的异常隔离: 一个 hook 失败不影响其余功能与后续初始化
+     */
+    private static void safeHook(String name, Runnable registration) {
+        try {
+            registration.run();
+        } catch (Throwable t) {
+            DebugLogger.e("Hook", name + " init error: " + t.getMessage(), t);
+            XposedBridge.log("[dolby_beta] " + name + " init error: " + t.getMessage());
+        }
     }
 
     /**
